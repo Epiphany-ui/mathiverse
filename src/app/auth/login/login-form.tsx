@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GlassCard } from "@/components/shared/glass-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { Suspense } from "react";
 
-export function LoginForm() {
+function LoginFormInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +39,8 @@ export function LoginForm() {
       setError(signInError.message);
       setLoading(false);
     } else {
-      router.push("/");
+      const redirect = searchParams.get("redirect") ?? "/";
+      router.push(redirect);
       router.refresh();
     }
   };
@@ -94,5 +97,17 @@ export function LoginForm() {
         </Link>
       </p>
     </GlassCard>
+  );
+}
+
+export function LoginForm() {
+  return (
+    <Suspense fallback={
+      <GlassCard className="w-full max-w-md p-8 text-center" hover={false}>
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+      </GlassCard>
+    }>
+      <LoginFormInner />
+    </Suspense>
   );
 }

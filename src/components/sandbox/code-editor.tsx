@@ -102,17 +102,79 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const typewriterRef = useRef<AbortController | null>(null);
+  const canvasOverlayRef = useRef<HTMLDivElement>(null);
 
-  // Keep track of the latest value for external updates
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  // Track value ONLY from editor changes — never sync from props
+  const editorValueRef = useRef(value);
 
   const handleChange = useCallback(
     (val: string) => {
-      valueRef.current = val;
+      editorValueRef.current = val;
       onChange?.(val);
     },
     [onChange],
+  );
+
+  // Typewriter: erase canvas → paint new code character by character
+  const typewriteCode = useCallback(
+    async (view: EditorView, targetCode: string) => {
+      // Cancel any ongoing typewriter
+      typewriterRef.current?.abort();
+      const controller = new AbortController();
+      typewriterRef.current = controller;
+
+      const currentDoc = view.state.doc.toString();
+
+      // Always start fresh: clear the entire canvas
+      if (currentDoc.length > 0) {
+        view.dispatch({
+          changes: { from: 0, to: currentDoc.length, insert: "" },
+        });
+      }
+
+      const CHUNK_SIZE = 4; // chars per frame
+      const INTERVAL = 18; // ~55fps
+
+      let pos = 0;
+
+      for (let i = 0; i < targetCode.length; i += CHUNK_SIZE) {
+        if (controller.signal.aborted) return;
+
+        const chunk = targetCode.slice(i, i + CHUNK_SIZE);
+        view.dispatch({
+          changes: { from: pos, to: pos, insert: chunk },
+        });
+        pos += chunk.length;
+
+        // Glow pulses while painting
+        const overlay = canvasOverlayRef.current;
+        if (overlay) {
+          overlay.style.transition = "none";
+          overlay.style.opacity = String(0.06 + Math.random() * 0.08);
+        }
+
+        // Slow down at newlines for dramatic effect
+        const isNewline = chunk.includes("\n");
+        const delay = INTERVAL + Math.random() * 10 + (isNewline ? 25 : 0);
+
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, delay);
+          controller.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+
+      // Glow fades out when done
+      const overlay = canvasOverlayRef.current;
+      if (overlay) {
+        overlay.style.transition = "opacity 0.8s ease-out";
+        overlay.style.opacity = "0";
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -177,22 +239,27 @@ export function CodeEditor({
     if (!view) return;
 
     const currentDoc = view.state.doc.toString();
-    if (value !== currentDoc && value !== valueRef.current) {
-      view.dispatch({
-        changes: {
-          from: 0,
-          to: currentDoc.length,
-          insert: value,
-        },
-      });
+    if (value !== currentDoc && value !== editorValueRef.current) {
+      typewriteCode(view, value);
     }
-  }, [value]);
+  }, [value, typewriteCode]);
 
   return (
-    <div
-      ref={editorRef}
-      className="h-full overflow-auto"
-      style={{ minHeight: 0 }}
-    />
+    <div className="relative h-full" style={{ minHeight: 0 }}>
+      {/* Canvas overlay — subtle glow while AI is "painting" code */}
+      <div
+        ref={canvasOverlayRef}
+        className="absolute inset-0 pointer-events-none z-10 opacity-0"
+        style={{
+          boxShadow: "inset 0 0 120px rgba(124, 58, 237, 0.25), inset 0 0 40px rgba(59, 130, 246, 0.15)",
+          transition: "opacity 0.6s ease-out",
+        }}
+      />
+      <div
+        ref={editorRef}
+        className="h-full overflow-auto"
+        style={{ minHeight: 0 }}
+      />
+    </div>
   );
 }

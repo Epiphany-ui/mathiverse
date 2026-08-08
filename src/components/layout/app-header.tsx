@@ -64,11 +64,11 @@ export function AppHeader() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-[#faf9f5] border-b border-[#e6dfd8]">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+          <div className="w-8 h-8 rounded-md bg-[#cc785c] flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <span className="text-lg font-bold tracking-tight hidden sm:block">
@@ -106,7 +106,7 @@ export function AppHeader() {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="搜索可视化、文章..."
-                className="pl-8 h-9 bg-white/5 border-white/10 focus:border-primary/50"
+                className="pl-8 h-9 bg-white border-[#e6dfd8] focus:border-[#cc785c]/50 rounded-lg"
                 autoFocus
                 onBlur={() => setSearchOpen(false)}
                 onKeyDown={(e) => {
@@ -134,7 +134,7 @@ export function AppHeader() {
             <DropdownMenu>
               <DropdownMenuTrigger>
                 <Avatar className="w-8 h-8 cursor-pointer">
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white text-xs">
+                  <AvatarFallback className="bg-[#cc785c] text-white text-xs">
                     {user.email?.slice(0, 2).toUpperCase() || "?"}
                   </AvatarFallback>
                 </Avatar>
@@ -175,7 +175,7 @@ export function AppHeader() {
               <Link href="/auth/register">
                 <Button
                   size="sm"
-                  className="gap-1.5 bg-gradient-to-r from-primary to-secondary"
+                  className="gap-1.5 bg-[#cc785c] hover:bg-[#a9583e]"
                 >
                   <User className="w-4 h-4" />
                   <span className="hidden sm:inline">注册</span>

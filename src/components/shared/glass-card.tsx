@@ -3,19 +3,25 @@ import type { HTMLAttributes } from "react";
 
 interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
   hover?: boolean;
+  variant?: "cream" | "canvas" | "dark";
 }
 
 export function GlassCard({
   className,
   hover = true,
+  variant = "cream",
   children,
   ...props
 }: GlassCardProps) {
   return (
     <div
       className={cn(
-        "glass-card",
-        !hover && "hover:scale-100 hover:shadow-none",
+        variant === "dark"
+          ? "card-dark"
+          : variant === "canvas"
+            ? "card-canvas"
+            : "card-cream",
+        !hover && "hover:shadow-none",
         className,
       )}
       {...props}

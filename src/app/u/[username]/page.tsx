@@ -5,13 +5,15 @@ import { FeedCard } from "@/components/community/feed-card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, UserPlus } from "lucide-react";
+import { Calendar } from "lucide-react";
+import { FollowButton } from "@/components/shared/follow-button";
 import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import {
   getProfileByUsername,
   getUserVisualizations,
   getUserArticles,
-} from "@/lib/db/mock-data";
+} from "@/lib/db/queries";
 
 export default async function UserProfilePage({
   params,
@@ -19,14 +21,19 @@ export default async function UserProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const profile = getProfileByUsername(username);
+  const supabase = await createClient();
+  if (!supabase) {
+    notFound();
+  }
+
+  const profile = await getProfileByUsername(supabase, username);
 
   if (!profile) {
     notFound();
   }
 
-  const vizs = getUserVisualizations(profile.id);
-  const articles = getUserArticles(profile.id);
+  const vizs = await getUserVisualizations(supabase, profile.id);
+  const articles = await getUserArticles(supabase, profile.id);
 
   // Build feed items from user content
   const vizItems = vizs.map((v) => ({
@@ -51,7 +58,7 @@ export default async function UserProfilePage({
     type: "article" as const,
     id: a.id,
     title: a.title,
-    description: a.bodyMd.slice(0, 150) + "...",
+    description: (a.bodyMd ?? "").slice(0, 150) + "...",
     coverUrl: a.coverUrl,
     posterUrl: a.coverUrl,
     tags: a.tags,
@@ -76,7 +83,7 @@ export default async function UserProfilePage({
           <div className="flex items-start gap-6">
             <Avatar className="w-20 h-20 shrink-0">
               <AvatarFallback className="text-2xl bg-gradient-to-br from-primary to-secondary text-white">
-                {profile.displayName.slice(0, 2).toUpperCase()}
+                {(profile.displayName ?? "U").slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 space-y-2">
@@ -109,14 +116,7 @@ export default async function UserProfilePage({
                 </span>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 shrink-0"
-            >
-              <UserPlus className="w-4 h-4" />
-              关注
-            </Button>
+            <FollowButton userId={profile.id} />
           </div>
         </GlassCard>
 

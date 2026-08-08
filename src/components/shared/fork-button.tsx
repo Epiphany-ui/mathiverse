@@ -1,9 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { GitFork } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 interface ForkButtonProps {
   vizId: string;
@@ -13,9 +15,31 @@ interface ForkButtonProps {
 
 export function ForkButton({ vizId, count, className }: ForkButtonProps) {
   const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const handleFork = () => {
-    router.push(`/sandbox/${vizId}`);
+  useEffect(() => {
+    const init = async () => {
+      const supabase = createClient();
+      if (!supabase) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
+    };
+    init();
+  }, []);
+
+  const handleFork = async () => {
+    const supabase = createClient();
+    if (!supabase) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+
+    // Navigate to sandbox with fork param — the sandbox will load
+    // the source visualization's code and set forkedFrom
+    router.push(`/sandbox?fork=${vizId}`);
   };
 
   return (
@@ -26,7 +50,7 @@ export function ForkButton({ vizId, count, className }: ForkButtonProps) {
       onClick={handleFork}
     >
       <GitFork className="w-4 h-4" />
-      <span>Fork {count > 0 ? count : ""}</span>
+      Fork {count > 0 ? count : ""}
     </Button>
   );
 }

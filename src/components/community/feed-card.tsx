@@ -46,22 +46,22 @@ export function FeedCard({ item, className }: FeedCardProps) {
         )}
       >
         {/* Thumbnail */}
-        <div className="aspect-video bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 relative overflow-hidden">
-          {/* Gradient pattern */}
+        <div className="aspect-video bg-[#efe9de] relative overflow-hidden">
+          {/* Subtle pattern */}
           <div className="absolute inset-0 opacity-30">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(124,58,237,0.3),transparent_70%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(59,130,246,0.2),transparent_70%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(204,120,92,0.2),transparent_70%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(93,184,166,0.15),transparent_70%)]" />
           </div>
 
           {/* Play / Doc icon */}
           <div className="absolute inset-0 flex items-center justify-center">
             {isViz ? (
-              <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 group-hover:bg-primary/60 transition-all">
+              <div className="w-14 h-14 rounded-full bg-[#cc785c] flex items-center justify-center group-hover:scale-110 group-hover:bg-[#a9583e] transition-all">
                 <Play className="w-6 h-6 text-white ml-0.5" />
               </div>
             ) : (
-              <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 group-hover:bg-accent/60 transition-all">
-                <FileText className="w-6 h-6 text-white" />
+              <div className="w-14 h-14 rounded-full bg-[#181715] flex items-center justify-center group-hover:scale-110 transition-all">
+                <FileText className="w-6 h-6 text-[#faf9f5]" />
               </div>
             )}
           </div>
@@ -69,14 +69,14 @@ export function FeedCard({ item, className }: FeedCardProps) {
           {/* Type badge */}
           <Badge
             variant="secondary"
-            className="absolute top-3 left-3 text-xs bg-black/50 backdrop-blur-sm border-0"
+            className="absolute top-3 left-3 text-xs bg-[#181715]/80 text-[#faf9f5] border-0"
           >
             {isViz ? "可视化" : "文章"}
           </Badge>
 
           {/* Duration for viz */}
           {isViz && (
-            <span className="absolute bottom-3 right-3 text-xs text-white/70 bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded">
+            <span className="absolute bottom-3 right-3 text-xs text-[#faf9f5] bg-[#181715]/80 px-2 py-0.5 rounded">
               <Clock className="w-3 h-3 inline mr-1" />
               观看
             </span>
@@ -103,11 +103,11 @@ export function FeedCard({ item, className }: FeedCardProps) {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Avatar className="w-5 h-5">
               <AvatarFallback className="text-[10px] bg-gradient-to-br from-primary/50 to-secondary/50">
-                {item.author.displayName.slice(0, 1)}
+                {item.author?.displayName?.slice(0, 1) ?? "?"}
               </AvatarFallback>
             </Avatar>
             <span className="truncate max-w-[80px]">
-              {item.author.displayName}
+              {item.author?.displayName ?? "Unknown"}
             </span>
             <span className="ml-auto flex items-center gap-0.5">
               <Heart className="w-3 h-3" />

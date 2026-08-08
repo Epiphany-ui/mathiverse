@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
@@ -8,13 +8,17 @@ import { FeedGrid } from "@/components/community/feed-grid";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, X } from "lucide-react";
-import { searchContent } from "@/lib/db/mock-data";
+import { createClient } from "@/lib/supabase/client";
+import { searchContent } from "@/lib/db/queries";
+import type { FeedItem } from "@/types";
 
 export function SearchContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q") ?? "";
   const [query, setQuery] = useState(initialQuery);
   const [inputValue, setInputValue] = useState(initialQuery);
+  const [results, setResults] = useState<FeedItem[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (initialQuery) {
@@ -23,9 +27,18 @@ export function SearchContent() {
     }
   }, [initialQuery]);
 
-  const results = useMemo(() => {
-    if (!query.trim()) return [];
-    return searchContent(query);
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    const supabase = createClient();
+    if (!supabase) return;
+    setLoading(true);
+    searchContent(supabase, query).then((r) => {
+      setResults(r);
+      setLoading(false);
+    });
   }, [query]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -77,7 +90,11 @@ export function SearchContent() {
             <p className="text-sm text-muted-foreground">
               搜索 "{query}" — 找到 {results.length} 个结果
             </p>
-            {results.length === 0 ? (
+            {loading ? (
+              <div className="flex justify-center py-20">
+                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : results.length === 0 ? (
               <div className="text-center py-20">
                 <Search className="w-12 h-12 mx-auto text-muted-foreground/30" />
                 <p className="text-muted-foreground mt-4">

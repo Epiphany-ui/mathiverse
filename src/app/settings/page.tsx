@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Settings, User, Bell, Shield, Check } from "lucide-react";
+import { Settings, User, Bell, Shield, Check, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SettingsPage() {
@@ -18,27 +18,94 @@ export default function SettingsPage() {
   const [bio, setBio] = useState("");
   const [website, setWebsite] = useState("");
   const [email, setEmail] = useState("");
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    if (!supabase) return;
-
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setEmail(user.email ?? "");
-        setDisplayName(
-          (user.user_metadata?.display_name as string) ?? "",
-        );
+    const init = async () => {
+      const supabase = createClient();
+      if (!supabase) {
+        setLoading(false);
+        return;
       }
-    });
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      setEmail(user.email ?? "");
+
+      // Load profile from profiles table
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name, bio, website")
+        .eq("id", user.id)
+        .single();
+
+      if (profile) {
+        setDisplayName(profile.display_name ?? "");
+        setBio(profile.bio ?? "");
+        setWebsite(profile.website ?? "");
+      }
+
+      setLoading(false);
+    };
+    init();
   }, []);
 
   const handleSave = async () => {
-    // In a real app, update profile in DB
+    const supabase = createClient();
+    if (!supabase) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    setSaving(true);
+    setError("");
+    setSaved(false);
+
+    // Update profiles table
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        display_name: displayName,
+        bio,
+        website,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (profileError) {
+      setError(profileError.message);
+      setSaving(false);
+      return;
+    }
+
+    // Also update auth metadata for header display
+    await supabase.auth.updateUser({
+      data: { display_name: displayName },
+    });
+
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col relative">
+        <ParticlesBackground />
+        <AppHeader />
+        <main className="flex-1 flex items-center justify-center z-10">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -68,11 +135,11 @@ export default function SettingsPage() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" disabled>
                 更换头像
               </Button>
               <p className="text-xs text-muted-foreground mt-1">
-                建议正方形图片，PNG/JPG
+                头像上传将在后续版本支持
               </p>
             </div>
           </div>
@@ -121,19 +188,24 @@ export default function SettingsPage() {
             />
           </div>
 
+          {error && (
+            <p className="text-sm text-red-400 flex items-center gap-1">
+              <AlertCircle className="w-3.5 h-3.5" />
+              {error}
+            </p>
+          )}
+
           <Button
             onClick={handleSave}
-            disabled={saved}
+            disabled={saving || saved}
             className="bg-gradient-to-r from-primary to-secondary gap-1.5"
           >
-            {saved ? (
-              <>
-                <Check className="w-4 h-4" />
-                已保存
-              </>
-            ) : (
-              "保存设置"
-            )}
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : saved ? (
+              <Check className="w-4 h-4" />
+            ) : null}
+            {saving ? "保存中..." : saved ? "已保存" : "保存设置"}
           </Button>
         </GlassCard>
 
@@ -144,7 +216,7 @@ export default function SettingsPage() {
             <h2 className="font-semibold">通知偏好</h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            邮件通知设置将在 Supabase 配置后可用
+            通知设置将在后续版本中提供
           </p>
         </GlassCard>
 
@@ -154,9 +226,12 @@ export default function SettingsPage() {
             <Shield className="w-5 h-5 text-primary" />
             <h2 className="font-semibold">安全</h2>
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" disabled>
             修改密码
           </Button>
+          <p className="text-xs text-muted-foreground">
+            密码修改将在后续版本中提供
+          </p>
         </GlassCard>
       </main>
     </div>

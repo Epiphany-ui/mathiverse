@@ -13,15 +13,21 @@ export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
       id: "welcome",
       role: "assistant",
       content:
-        "你好！我是你的 Manim 动画助手。用自然语言描述你想看的数学可视化，我会帮你生成代码。",
+        "你好！我是你的 Manim 动画助手。用自然语言描述你想看的数学可视化，我会帮你生成代码。\n\n💡 提示：你也可以粘贴现有的 Manim 代码，然后让我帮你修改、优化或修复。",
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  /**
+   * Send a message to the AI assistant.
+   * @param content The user's message text
+   * @param currentCode Optional current code from the editor for context-aware responses
+   * @param isFixMode If true, sends the error as a special fix-it request
+   */
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, currentCode?: string, isFixMode?: boolean) => {
       if (!content.trim() || isLoading) return;
 
       setError(null);
@@ -30,7 +36,7 @@ export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: "user",
-        content,
+        content: isFixMode ? `渲染时出现以下错误，请修复代码：\n\n${content}` : content,
       };
       setMessages((prev) => [...prev, userMsg]);
 
@@ -59,7 +65,10 @@ export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: allMessages }),
+          body: JSON.stringify({
+            messages: allMessages,
+            currentCode: currentCode ?? "",
+          }),
           signal: controller.signal,
         });
 
@@ -83,9 +92,9 @@ export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
           for (const line of lines) {
             if (line.startsWith("data: ")) {
               try {
-                const { content } = JSON.parse(line.slice(6));
-                if (content) {
-                  fullContent += content;
+                const { content: delta } = JSON.parse(line.slice(6));
+                if (delta) {
+                  fullContent += delta;
                   setMessages((prev) =>
                     prev.map((m) =>
                       m.id === assistantId
@@ -154,7 +163,7 @@ export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
         id: "welcome",
         role: "assistant",
         content:
-          "你好！我是你的 Manim 动画助手。用自然语言描述你想看的数学可视化，我会帮你生成代码。",
+          "你好！我是你的 Manim 动画助手。用自然语言描述你想看的数学可视化，我会帮你生成代码。\n\n💡 提示：你也可以粘贴现有的 Manim 代码，然后让我帮你修改、优化或修复。",
       },
     ]);
     setError(null);

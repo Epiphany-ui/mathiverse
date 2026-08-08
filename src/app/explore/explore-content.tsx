@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
@@ -8,8 +8,9 @@ import { FeedGrid } from "@/components/community/feed-grid";
 import { TagBadge } from "@/components/content/tag-badge";
 import { Button } from "@/components/ui/button";
 import { Compass, TrendingUp, Clock, X } from "lucide-react";
-import { buildFeedItems, filterByTag } from "@/lib/db/mock-data";
-import type { FeedSort } from "@/types";
+import { createClient } from "@/lib/supabase/client";
+import { buildFeedItems } from "@/lib/db/queries";
+import type { FeedSort, FeedItem } from "@/types";
 
 const POPULAR_TAGS = [
   "傅里叶变换", "梯度下降", "排序算法", "欧拉公式",
@@ -22,17 +23,34 @@ export function ExploreContent() {
   const initialTag = searchParams.get("tag") ?? "";
   const [sort, setSort] = useState<FeedSort>("hot");
   const [activeTag, setActiveTag] = useState(initialTag);
+  const [items, setItems] = useState<FeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const items = useMemo(() => {
-    if (activeTag) {
-      return filterByTag(activeTag).sort((a, b) => {
-        if (sort === "new") {
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        }
-        return b.likesCount + b.commentsCount * 2 - (a.likesCount + a.commentsCount * 2);
-      });
+  useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) {
+      setLoading(false);
+      return;
     }
-    return buildFeedItems(sort);
+    setLoading(true);
+    buildFeedItems(supabase, sort).then((all) => {
+      if (activeTag) {
+        const filtered = all
+          .filter((item) =>
+            item.tags.some((t) => t.toLowerCase() === activeTag.toLowerCase()),
+          )
+          .sort((a, b) => {
+            if (sort === "new") {
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }
+            return b.likesCount + b.commentsCount * 2 - (a.likesCount + a.commentsCount * 2);
+          });
+        setItems(filtered);
+      } else {
+        setItems(all);
+      }
+      setLoading(false);
+    });
   }, [sort, activeTag]);
 
   return (
@@ -113,7 +131,13 @@ export function ExploreContent() {
         </p>
 
         {/* Feed Grid */}
-        <FeedGrid items={items} />
+        {loading ? (
+          <div className="flex justify-center py-20">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <FeedGrid items={items} />
+        )}
       </main>
     </div>
   );

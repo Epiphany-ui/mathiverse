@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const messages = body.messages ?? [];
+    const currentCode = (body.currentCode as string) ?? undefined;
 
     if (!isConfigured()) {
       return new Response(
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
         (m: { role: string }) => m.role === "user" || m.role === "assistant",
       ),
       lastUserMsg,
+      currentCode,
     );
 
     const stream = await chatCompletionStream({

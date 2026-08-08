@@ -1,32 +1,86 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import {
+  getLikeState,
+  addLike,
+  removeLike,
+} from "@/lib/db/interactions";
 
 interface LikeButtonProps {
-  liked?: boolean;
+  targetType: "visualization" | "article" | "comment";
+  targetId: string;
   count: number;
-  onToggle?: () => void;
   className?: string;
 }
 
 export function LikeButton({
-  liked = false,
+  targetType,
+  targetId,
   count,
-  onToggle,
   className,
 }: LikeButtonProps) {
-  const [isLiked, setIsLiked] = useState(liked);
+  const [isLiked, setIsLiked] = useState(false);
   const [animating, setAnimating] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const handleClick = () => {
-    setIsLiked(!isLiked);
+  // Check auth and like state on mount
+  useEffect(() => {
+    const init = async () => {
+      const supabase = createClient();
+      if (!supabase) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setUserId(user.id);
+      const liked = await getLikeState(supabase, user.id, targetType, targetId);
+      setIsLiked(liked);
+    };
+    init();
+  }, [targetType, targetId]);
+
+  const handleClick = useCallback(async () => {
+    const supabase = createClient();
+    if (!supabase) return;
+
+    // Check auth
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+
+    if (loading) return;
+    setLoading(true);
+
+    const wasLiked = isLiked;
+
+    // Optimistic update
+    setIsLiked(!wasLiked);
     setAnimating(true);
     setTimeout(() => setAnimating(false), 300);
-    onToggle?.();
-  };
+
+    // Persist
+    const result = wasLiked
+      ? await removeLike(supabase, user.id, targetType, targetId)
+      : await addLike(supabase, user.id, targetType, targetId);
+
+    if (result.error) {
+      // Revert on error
+      setIsLiked(wasLiked);
+    }
+
+    setLoading(false);
+  }, [isLiked, loading, targetType, targetId]);
+
+  // Calculate display count with optimistic offset
+  const displayCount = count + (isLiked ? 0 : 0); // server count + local
 
   return (
     <Button
@@ -34,6 +88,7 @@ export function LikeButton({
       size="sm"
       className={cn("gap-1.5 group", className)}
       onClick={handleClick}
+      disabled={loading}
     >
       <Heart
         className={cn(
@@ -43,7 +98,7 @@ export function LikeButton({
         )}
       />
       <span className={cn(isLiked && "text-red-500")}>
-        {count}
+        {displayCount}
       </span>
     </Button>
   );

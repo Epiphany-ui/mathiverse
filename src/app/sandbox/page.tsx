@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
 import { ChatPanel } from "@/components/sandbox/chat-panel";
 import { CodeEditor } from "@/components/sandbox/code-editor";
+import { PublishDialog } from "@/components/sandbox/publish-dialog";
 import { Button } from "@/components/ui/button";
 import { useChat } from "@/hooks/use-chat";
 import {
@@ -13,6 +14,8 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  Sparkles,
+  Video,
 } from "lucide-react";
 
 const DEFAULT_CODE = `from manim import *
@@ -37,6 +40,9 @@ export default function SandboxPage() {
     "idle" | "rendering" | "done" | "error"
   >("idle");
   const [renderError, setRenderError] = useState("");
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleCodeExtracted = useCallback((newCode: string) => {
     setCode(newCode);
@@ -45,31 +51,62 @@ export default function SandboxPage() {
   const { messages, isLoading, sendMessage, cancelSend, clearMessages } =
     useChat({ onCodeExtracted: handleCodeExtracted });
 
+  // Wrap sendMessage to always pass current code
+  const handleSend = useCallback(
+    (content: string) => {
+      sendMessage(content, code);
+    },
+    [sendMessage, code],
+  );
+
+  // AI Fix: send render error to AI
+  const handleAIFix = useCallback(() => {
+    if (!renderError) return;
+    sendMessage(renderError, code, true);
+    setRenderStatus("idle");
+    setRenderError("");
+  }, [renderError, sendMessage, code]);
+
   const handleRender = async () => {
     setRenderStatus("rendering");
     setRenderError("");
+    setVideoUrl(null);
 
     try {
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       const res = await fetch("/api/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, quality: "-ql", format: "mp4" }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        setRenderError(data.error ?? "渲染失败");
+        const errMsg = data.error ?? "渲染失败";
+        setRenderError(errMsg);
         setRenderStatus("error");
       } else {
+        // Store the video URL for display and publishing
+        if (data.video_url) {
+          setVideoUrl(data.video_url);
+        }
         setRenderStatus("done");
       }
-    } catch {
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
       setRenderError(
-        "无法连接到本地渲染器。请确保 Tauri 渲染器正在运行 (localhost:9876)",
+        "无法连接到本地渲染器。请确保 Python 渲染器正在运行 (localhost:9876)",
       );
       setRenderStatus("error");
     }
+  };
+
+  const handlePublish = () => {
+    setShowPublishDialog(true);
   };
 
   return (
@@ -82,14 +119,14 @@ export default function SandboxPage() {
           <ChatPanel
             messages={messages}
             isLoading={isLoading}
-            onSend={sendMessage}
+            onSend={handleSend}
             onCancel={cancelSend}
             onClear={clearMessages}
             className="h-full"
           />
         </aside>
 
-        {/* Right: Code Editor + Toolbar */}
+        {/* Right: Code Editor + Toolbar + Video Preview */}
         <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] min-w-0">
           {/* Toolbar */}
           <div className="h-12 border-b border-border/50 flex items-center px-4 gap-3 shrink-0">
@@ -114,14 +151,29 @@ export default function SandboxPage() {
             )}
             {renderStatus === "error" && (
               <span
-                className="text-xs text-red-400 flex items-center gap-1 max-w-[200px] truncate"
+                className="text-xs text-red-400 flex items-center gap-1 max-w-[300px]"
                 title={renderError}
               >
                 <AlertCircle className="w-3 h-3 shrink-0" />
-                {renderError}
+                <span className="truncate">{renderError}</span>
               </span>
             )}
 
+            {/* AI Fix button (only when error) */}
+            {renderStatus === "error" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 text-purple-400 border-purple-400/30 hover:bg-purple-400/10"
+                onClick={handleAIFix}
+                disabled={isLoading}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                AI 修复
+              </Button>
+            )}
+
+            {/* Render button */}
             <Button
               variant="outline"
               size="sm"
@@ -136,13 +188,42 @@ export default function SandboxPage() {
               )}
               渲染
             </Button>
+
+            {/* Publish button */}
             <Button
               size="sm"
               className="gap-1.5 bg-gradient-to-r from-primary to-secondary"
+              onClick={handlePublish}
+              disabled={renderStatus !== "done"}
+              title={
+                renderStatus !== "done"
+                  ? "请先渲染成功后再发布"
+                  : "发布到社区"
+              }
             >
               发布
             </Button>
           </div>
+
+          {/* Video Preview (shown after successful render) */}
+          {videoUrl && renderStatus === "done" && (
+            <div className="border-b border-border/30 bg-black/20">
+              <div className="max-w-2xl mx-auto p-3">
+                <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+                  <Video className="w-3.5 h-3.5" />
+                  渲染预览
+                </div>
+                <video
+                  src={videoUrl}
+                  controls
+                  className="w-full rounded-md max-h-[200px] bg-black"
+                  poster={undefined}
+                >
+                  你的浏览器不支持视频播放
+                </video>
+              </div>
+            </div>
+          )}
 
           {/* Code Editor */}
           <div className="flex-1 overflow-hidden">
@@ -154,6 +235,14 @@ export default function SandboxPage() {
           </div>
         </div>
       </main>
+
+      {/* Publish Dialog */}
+      <PublishDialog
+        open={showPublishDialog}
+        code={code}
+        videoUrl={videoUrl}
+        onClose={() => setShowPublishDialog(false)}
+      />
     </div>
   );
 }

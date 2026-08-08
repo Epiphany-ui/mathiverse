@@ -1,6 +1,9 @@
 "use client";
 
 import { useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { GlassCard } from "@/components/shared/glass-card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -58,8 +61,36 @@ function ChatBubble({
         )}
         hover={false}
       >
-        <div className="text-sm whitespace-pre-wrap leading-relaxed break-words">
-          {message.content}
+        <div className="text-sm leading-relaxed break-words chat-markdown">
+          <ReactMarkdown
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+            components={{
+              p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+              code: ({ className, children, ...props }) => {
+                const isInline = !className;
+                return isInline ? (
+                  <code className="bg-muted/50 px-1 py-0.5 rounded text-xs font-mono" {...props}>{children}</code>
+                ) : (
+                  <code className="text-xs font-mono" {...props}>{children}</code>
+                );
+              },
+              pre: ({ children }) => (
+                <pre className="bg-background/50 rounded p-2 overflow-x-auto text-xs font-mono my-1.5">{children}</pre>
+              ),
+              ul: ({ children }) => <ul className="list-disc pl-4 mb-1.5 space-y-0.5">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal pl-4 mb-1.5 space-y-0.5">{children}</ol>,
+              h1: ({ children }) => <h1 className="font-bold text-base mb-1 mt-2">{children}</h1>,
+              h2: ({ children }) => <h2 className="font-bold text-sm mb-1 mt-2">{children}</h2>,
+              h3: ({ children }) => <h3 className="font-bold text-sm mb-1 mt-1.5">{children}</h3>,
+              strong: ({ children }) => <strong className="font-semibold text-purple-300">{children}</strong>,
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-2 border-primary/30 pl-2.5 italic text-muted-foreground my-1.5">{children}</blockquote>
+              ),
+            }}
+          >
+            {message.content || (message.id === "welcome" ? undefined : "▊")}
+          </ReactMarkdown>
         </div>
         {message.code && (
           <div className="mt-2 pt-2 border-t border-border/30">

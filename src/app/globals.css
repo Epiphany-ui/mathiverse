@@ -2,8 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -21,131 +19,159 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-glass: var(--glass);
-  --color-glass-border: var(--glass-border);
-  --color-glow-purple: var(--glow-purple);
-  --color-glow-blue: var(--glow-blue);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface-card: var(--surface-card);
+  --color-surface-dark: var(--surface-dark);
+  --color-surface-dark-elevated: var(--surface-dark-elevated);
+  --color-canvas: var(--canvas);
+  --color-hairline: var(--hairline);
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-display: var(--font-cormorant);
 }
 
-/* ─── Mathiverse Design System ─── */
+/* ─── Anthropic-inspired Design System ─── */
 :root {
-  --radius: 0.625rem;
+  /* Brand */
+  --primary: #cc785c;
+  --primary-active: #a9583e;
+  --primary-foreground: #ffffff;
 
-  /* Light theme (fallback, not primary) */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.58 0.22 280);       /* purple */
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.6 0.18 250);       /* blue */
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.65 0.18 190);         /* cyan */
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.58 0.22 280);
-  --glass: rgba(255, 255, 255, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.2);
-  --glow-purple: oklch(0.58 0.22 280 / 0.15);
-  --glow-blue: oklch(0.6 0.18 250 / 0.12);
+  /* Surface */
+  --canvas: #faf9f5;
+  --background: #faf9f5;
+  --surface-card: #efe9de;
+  --surface-dark: #181715;
+  --surface-dark-elevated: #252320;
+  --surface-dark-soft: #1f1e1b;
+
+  /* Text */
+  --ink: #141413;
+  --foreground: #141413;
+  --body: #3d3d3a;
+  --body-strong: #252523;
+  --muted: #6c6a64;
+  --muted-foreground: #6c6a64;
+  --card-foreground: #141413;
+  --secondary-foreground: #141413;
+  --accent-foreground: #141413;
+
+  /* Borders */
+  --hairline: #e6dfd8;
+  --border: #e6dfd8;
+  --input: #faf9f5;
+  --ring: #cc785c;
+
+  /* Semantic */
+  --destructive: #c64545;
+  --accent: #5db8a6;
+  --accent-teal: #5db8a6;
+  --accent-amber: #e8a55a;
+
+  /* Component tokens */
+  --card: #efe9de;
+  --secondary: #faf9f5;
+  --secondary-foreground: #141413;
+  --radius: 0.75rem;
 }
 
-/* ─── Dark Theme (Primary) ─── */
-.dark {
-  --background: oklch(0.13 0.02 265);      /* deep blue-black #0a0a1a */
-  --foreground: oklch(0.95 0.01 260);       /* near-white */
-  --card: oklch(0.16 0.02 265 / 0.7);       /* translucent card bg */
-  --card-foreground: oklch(0.95 0.01 260);
-  --primary: oklch(0.58 0.22 280);          /* purple #7c3aed */
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.6 0.18 250);         /* blue #3b82f6 */
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.22 0.02 265);
-  --muted-foreground: oklch(0.65 0.02 260);
-  --accent: oklch(0.65 0.18 190);           /* cyan #06b6d4 */
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.65 0.2 22);
-  --border: oklch(1 0 0 / 0.08);
-  --input: oklch(1 0 0 / 0.12);
-  --ring: oklch(0.58 0.22 280);
-  --glass: rgba(255, 255, 255, 0.03);
-  --glass-border: rgba(255, 255, 255, 0.06);
-  --glow-purple: rgba(124, 58, 237, 0.15);
-  --glow-blue: rgba(59, 130, 246, 0.12);
-}
-
-/* ─── Base Styles ─── */
+/* ─── Base ─── */
 @layer base {
-  * {
-    border-color: var(--border);
-  }
+  * { border-color: var(--border); }
   body {
-    background-color: var(--background);
+    background-color: var(--canvas);
     color: var(--foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  html {
-    color-scheme: dark;
-  }
-  html.dark {
-    color-scheme: dark;
-  }
+  html { color-scheme: light; }
 }
 
-/* ─── Glassmorphism Utility ─── */
-.glass {
-  background: var(--glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-}
+/* ─── Typography Utilities ─── */
+.display-xl { font-family: var(--font-display); font-size: 64px; font-weight: 400; line-height: 1.05; letter-spacing: -1.5px; }
+.display-lg { font-family: var(--font-display); font-size: 48px; font-weight: 400; line-height: 1.1; letter-spacing: -1px; }
+.display-md { font-family: var(--font-display); font-size: 36px; font-weight: 400; line-height: 1.15; letter-spacing: -0.5px; }
+.display-sm { font-family: var(--font-display); font-size: 28px; font-weight: 400; line-height: 1.2; letter-spacing: -0.3px; }
+.body-md  { font-size: 16px; line-height: 1.55; }
+.body-sm  { font-size: 14px; line-height: 1.55; }
+.caption  { font-size: 13px; font-weight: 500; line-height: 1.4; }
 
-.glass-card {
-  background: var(--glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border);
+/* ─── Card System (replaces glassmorphism) ─── */
+.card-cream {
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition: transform 200ms ease, box-shadow 200ms ease;
+  transition: box-shadow 150ms ease;
 }
-.glass-card:hover {
-  transform: scale(1.02);
-  box-shadow: 0 4px 16px var(--glow-purple);
+.card-cream:hover {
+  box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08);
 }
+
+.card-dark {
+  background: var(--surface-dark);
+  color: #faf9f5;
+  border-radius: var(--radius-lg);
+}
+
+.card-canvas {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+}
+
+.card-code {
+  background: var(--surface-dark);
+  color: #faf9f5;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ─── Button Overrides ─── */
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 20px;
+  height: 40px;
+  transition: background 150ms ease;
+}
+.btn-primary:hover { background: var(--primary-active); }
+
+.btn-secondary {
+  background: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 20px;
+  height: 40px;
+}
+
+/* ─── Section rhythm ─── */
+.section { padding: 96px 0; }
 
 /* ─── Scrollbar ─── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: oklch(1 0 0 / 0.15);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: oklch(1 0 0 / 0.25);
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
 
-/* ─── Code blocks in markdown ─── */
+/* ─── Code blocks ─── */
 pre {
-  background: oklch(0.16 0.02 265) !important;
-  border: 1px solid var(--border);
+  background: var(--surface-dark) !important;
+  color: #faf9f5;
   border-radius: var(--radius-lg);
   padding: 1rem;
   overflow-x: auto;
@@ -155,17 +181,19 @@ code {
   font-size: 0.875rem;
 }
 
-/* ─── KaTeX overrides ─── */
-.katex {
-  font-size: 1.1em;
-}
+/* ─── KaTeX ─── */
+.katex { font-size: 1.1em; }
 
-/* ─── Animation keyframes ─── */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+/* ─── Animations ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 8px var(--glow-purple); }
-  50% { box-shadow: 0 0 20px var(--glow-purple); }
+.animate-fade-in { animation: fadeIn 400ms ease-out; }
+
+/* ─── Code Canvas flash ─── */
+@keyframes codeFlash {
+  0%   { opacity: 0.6; }
+  100% { opacity: 0; }
 }
+.animate-code-flash { animation: codeFlash 800ms ease-out; }

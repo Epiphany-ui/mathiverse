@@ -19,11 +19,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import {
   getVisualizationById,
   getCommentsForTarget,
-  getProfile,
-} from "@/lib/db/mock-data";
+} from "@/lib/db/queries";
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -42,15 +42,29 @@ export default async function VisualizationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const viz = getVisualizationById(id);
+  const supabase = await createClient();
+  if (!supabase) {
+    notFound();
+  }
+
+  const viz = await getVisualizationById(supabase, id);
 
   if (!viz) {
     notFound();
   }
 
-  const comments = getCommentsForTarget("visualization", id);
+  // Fire-and-forget view increment (non-blocking)
+  supabase.rpc("increment_views", {
+    target_type: "visualization",
+    target_id: id,
+  }).then(
+    () => {},
+    () => {},
+  );
+
+  const comments = await getCommentsForTarget(supabase, "visualization", id);
   const forkedFrom =
-    viz.forkedFrom ? getVisualizationById(viz.forkedFrom) : null;
+    viz.forkedFrom ? await getVisualizationById(supabase, viz.forkedFrom) : null;
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -122,9 +136,9 @@ export default async function VisualizationPage({
             </Link>
             <div className="flex-1" />
             <div className="flex items-center gap-1">
-              <LikeButton count={viz.likesCount} />
+              <LikeButton targetType="visualization" targetId={id} count={viz.likesCount} />
               <ForkButton vizId={id} count={viz.forksCount} />
-              <BookmarkButton />
+              <BookmarkButton targetType="visualization" targetId={id} />
             </div>
           </div>
 

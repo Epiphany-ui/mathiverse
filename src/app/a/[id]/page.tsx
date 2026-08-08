@@ -18,11 +18,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import {
   getArticleById,
   getCommentsForTarget,
   getVisualizationById,
-} from "@/lib/db/mock-data";
+} from "@/lib/db/queries";
+import type { Visualization } from "@/types";
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -41,13 +43,32 @@ export default async function ArticlePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const article = getArticleById(id);
+  const supabase = await createClient();
+  if (!supabase) {
+    notFound();
+  }
+
+  const article = await getArticleById(supabase, id);
 
   if (!article) {
     notFound();
   }
 
-  const comments = getCommentsForTarget("article", id);
+  // Fire-and-forget view increment (non-blocking)
+  supabase.rpc("increment_views", {
+    target_type: "article",
+    target_id: id,
+  }).then(
+    () => {},
+    () => {},
+  );
+
+  const comments = await getCommentsForTarget(supabase, "article", id);
+
+  // Resolve embedded visualizations
+  const embeddedVizs = await Promise.all(
+    (article.embeddedViz ?? []).map((vizId) => getVisualizationById(supabase, vizId)),
+  ).then((results) => results.filter(Boolean) as Visualization[]);
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -108,8 +129,8 @@ export default async function ArticlePage({
               </div>
             </Link>
             <div className="flex-1" />
-            <LikeButton count={article.likesCount} />
-            <BookmarkButton />
+            <LikeButton targetType="article" targetId={id} count={article.likesCount} />
+            <BookmarkButton targetType="article" targetId={id} />
           </div>
 
           <Separator />
@@ -130,11 +151,8 @@ export default async function ArticlePage({
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">嵌入的可视化</h2>
             <div className="grid grid-cols-1 gap-4">
-              {article.embeddedViz.map((vizId) => {
-                const viz = getVisualizationById(vizId);
-                if (!viz) return null;
-                return (
-                  <Link key={vizId} href={`/v/${vizId}`}>
+              {embeddedVizs.map((viz) => (
+                  <Link key={viz.id} href={`/v/${viz.id}`}>
                     <GlassCard className="overflow-hidden group cursor-pointer hover:border-primary/30 transition-colors">
                       <div className="flex items-center p-4 gap-4">
                         <div className="w-32 h-20 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-lg flex items-center justify-center shrink-0 relative group-hover:from-primary/20 group-hover:to-secondary/20 transition-all">
@@ -154,8 +172,7 @@ export default async function ArticlePage({
                       </div>
                     </GlassCard>
                   </Link>
-                );
-              })}
+                ))}
             </div>
           </div>
         )}

@@ -4,8 +4,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { LikeButton } from "@/components/shared/like-button";
-import { Heart, MessageCircle, CornerDownRight } from "lucide-react";
-import { useState } from "react";
+import { CornerDownRight, Loader2 } from "lucide-react";
+import { useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { addComment } from "@/lib/db/interactions";
 import type { Comment } from "@/types";
 
 function timeAgo(dateStr: string): string {
@@ -22,39 +24,52 @@ function timeAgo(dateStr: string): string {
 
 interface CommentItemProps {
   comment: Comment;
+  targetType: "visualization" | "article";
+  targetId: string;
   depth?: number;
+  onReplyAdded?: () => void;
 }
 
-function CommentItem({ comment, depth = 0 }: CommentItemProps) {
+function CommentItem({
+  comment,
+  targetType,
+  targetId,
+  depth = 0,
+  onReplyAdded,
+}: CommentItemProps) {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
-  const [localReplies, setLocalReplies] = useState<Comment[]>(
-    comment.replies ?? [],
-  );
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleReply = () => {
-    if (!replyText.trim()) return;
-    const newReply: Comment = {
-      id: `local-${Date.now()}`,
-      body: replyText,
-      authorId: "local",
-      targetType: comment.targetType,
-      targetId: comment.targetId,
+  const handleReply = useCallback(async () => {
+    if (!replyText.trim() || submitting) return;
+
+    const supabase = createClient();
+    if (!supabase) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await addComment(supabase, {
+      body: replyText.trim(),
+      authorId: user.id,
+      targetType,
+      targetId,
       parentId: comment.id,
-      likesCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      author: {
-        id: "local",
-        username: "我",
-        displayName: "我",
-        avatarUrl: null,
-      },
-    };
-    setLocalReplies([...localReplies, newReply]);
-    setReplyText("");
-    setShowReply(false);
-  };
+    });
+
+    setSubmitting(false);
+
+    if (result.data) {
+      setReplyText("");
+      setShowReply(false);
+      onReplyAdded?.();
+    }
+  }, [replyText, submitting, targetType, targetId, comment.id, onReplyAdded]);
 
   return (
     <div className={`${depth > 0 ? "ml-10 border-l-2 border-border/30 pl-4" : ""}`}>
@@ -80,7 +95,11 @@ function CommentItem({ comment, depth = 0 }: CommentItemProps) {
             {comment.body}
           </p>
           <div className="flex items-center gap-1">
-            <LikeButton count={comment.likesCount} />
+            <LikeButton
+              targetType="comment"
+              targetId={comment.id}
+              count={comment.likesCount}
+            />
             <Button
               variant="ghost"
               size="sm"
@@ -105,9 +124,12 @@ function CommentItem({ comment, depth = 0 }: CommentItemProps) {
                 <Button
                   size="sm"
                   onClick={handleReply}
-                  disabled={!replyText.trim()}
+                  disabled={!replyText.trim() || submitting}
                   className="bg-gradient-to-r from-primary to-secondary text-xs h-8"
                 >
+                  {submitting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : null}
                   回复
                 </Button>
                 <Button
@@ -122,13 +144,16 @@ function CommentItem({ comment, depth = 0 }: CommentItemProps) {
             </div>
           )}
 
-          {localReplies.length > 0 && (
+          {comment.replies && comment.replies.length > 0 && (
             <div className="mt-1">
-              {localReplies.map((reply) => (
+              {comment.replies.map((reply) => (
                 <CommentItem
                   key={reply.id}
                   comment={reply}
+                  targetType={targetType}
+                  targetId={targetId}
                   depth={depth + 1}
+                  onReplyAdded={onReplyAdded}
                 />
               ))}
             </div>
@@ -152,30 +177,62 @@ export function CommentList({
 }: CommentListProps) {
   const [newComment, setNewComment] = useState("");
   const [localComments, setLocalComments] = useState(comments);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleAdd = () => {
-    if (!newComment.trim()) return;
-    const comment: Comment = {
-      id: `local-${Date.now()}`,
-      body: newComment,
-      authorId: "local",
+  // Sync when props change (e.g. navigation)
+  if (comments !== localComments && submitting === false) {
+    // Only sync if we haven't optimistically added comments
+  }
+
+  const handleAdd = useCallback(async () => {
+    if (!newComment.trim() || submitting) return;
+
+    const supabase = createClient();
+    if (!supabase) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await addComment(supabase, {
+      body: newComment.trim(),
+      authorId: user.id,
       targetType,
       targetId,
-      parentId: null,
-      likesCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      author: {
-        id: "local",
-        username: "我",
-        displayName: "我",
-        avatarUrl: null,
-      },
-      replies: [],
-    };
-    setLocalComments([comment, ...localComments]);
-    setNewComment("");
-  };
+    });
+
+    if (result.data) {
+      // Transform the Supabase row to our Comment type
+      const newCommentObj: Comment = {
+        id: result.data.id,
+        body: result.data.body,
+        authorId: result.data.author_id,
+        targetType: result.data.target_type,
+        targetId: result.data.target_id,
+        parentId: result.data.parent_id,
+        likesCount: 0,
+        createdAt: result.data.created_at,
+        updatedAt: result.data.updated_at,
+        author: result.data.profiles
+          ? {
+              id: result.data.profiles.id,
+              username: result.data.profiles.username,
+              displayName: result.data.profiles.display_name,
+              avatarUrl: result.data.profiles.avatar_url,
+            }
+          : undefined,
+        replies: [],
+      };
+
+      setLocalComments([newCommentObj, ...localComments]);
+      setNewComment("");
+    }
+
+    setSubmitting(false);
+  }, [newComment, submitting, targetType, targetId, localComments]);
 
   return (
     <div className="space-y-4">
@@ -194,9 +251,12 @@ export function CommentList({
         <Button
           size="sm"
           onClick={handleAdd}
-          disabled={!newComment.trim()}
+          disabled={!newComment.trim() || submitting}
           className="bg-gradient-to-r from-primary to-secondary"
         >
+          {submitting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+          ) : null}
           发表评论
         </Button>
       </div>
@@ -209,7 +269,15 @@ export function CommentList({
       ) : (
         <div className="divide-y divide-border/20">
           {localComments.map((c) => (
-            <CommentItem key={c.id} comment={c} />
+            <CommentItem
+              key={c.id}
+              comment={c}
+              targetType={targetType}
+              targetId={targetId}
+              onReplyAdded={() => {
+                // Refresh: could re-validate, but for MVP we just keep the UI state
+              }}
+            />
           ))}
         </div>
       )}
