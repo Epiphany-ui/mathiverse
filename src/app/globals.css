@@ -1,26 +1,171 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-glass: var(--glass);
+  --color-glass-border: var(--glass-border);
+  --color-glow-purple: var(--glow-purple);
+  --color-glow-blue: var(--glow-blue);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ─── Mathiverse Design System ─── */
+:root {
+  --radius: 0.625rem;
+
+  /* Light theme (fallback, not primary) */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.58 0.22 280);       /* purple */
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.6 0.18 250);       /* blue */
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.65 0.18 190);         /* cyan */
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.58 0.22 280);
+  --glass: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glow-purple: oklch(0.58 0.22 280 / 0.15);
+  --glow-blue: oklch(0.6 0.18 250 / 0.12);
+}
+
+/* ─── Dark Theme (Primary) ─── */
+.dark {
+  --background: oklch(0.13 0.02 265);      /* deep blue-black #0a0a1a */
+  --foreground: oklch(0.95 0.01 260);       /* near-white */
+  --card: oklch(0.16 0.02 265 / 0.7);       /* translucent card bg */
+  --card-foreground: oklch(0.95 0.01 260);
+  --primary: oklch(0.58 0.22 280);          /* purple #7c3aed */
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.6 0.18 250);         /* blue #3b82f6 */
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.22 0.02 265);
+  --muted-foreground: oklch(0.65 0.02 260);
+  --accent: oklch(0.65 0.18 190);           /* cyan #06b6d4 */
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.65 0.2 22);
+  --border: oklch(1 0 0 / 0.08);
+  --input: oklch(1 0 0 / 0.12);
+  --ring: oklch(0.58 0.22 280);
+  --glass: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glow-purple: rgba(124, 58, 237, 0.15);
+  --glow-blue: rgba(59, 130, 246, 0.12);
+}
+
+/* ─── Base Styles ─── */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    color-scheme: dark;
+  }
+  html.dark {
+    color-scheme: dark;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ─── Glassmorphism Utility ─── */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-card {
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.glass-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px var(--glow-purple);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(1 0 0 / 0.25);
+}
+
+/* ─── Code blocks in markdown ─── */
+pre {
+  background: oklch(0.16 0.02 265) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  overflow-x: auto;
+}
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+/* ─── KaTeX overrides ─── */
+.katex {
+  font-size: 1.1em;
+}
+
+/* ─── Animation keyframes ─── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px var(--glow-purple); }
+  50% { box-shadow: 0 0 20px var(--glow-purple); }
 }

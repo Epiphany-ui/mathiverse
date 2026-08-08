@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python renderer
+renderer/venv/
+renderer/__pycache__/
+__pycache__/
+
+# playwright
+.playwright-mcp/
+*.png
+
+# tauri
+src-tauri/target/

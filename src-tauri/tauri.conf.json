@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "Mathiverse Renderer",
+  "version": "0.1.0",
+  "identifier": "com.mathiverse.renderer",
+  "build": {
+    "frontendDist": "../.next",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "title": "Mathiverse Renderer",
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "id": "main-tray",
+      "iconPath": "icons/tray-icon.png",
+      "tooltip": "Mathiverse Renderer"
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}
