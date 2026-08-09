@@ -1,0 +1,223 @@
+.page {
+  --gallery-black: #0b0f0c;
+  --archive-paper: #f2f3ed;
+  --mathematical-ink: #121510;
+  --function-blue: #4169ff;
+  --orbit-green: #25bea5;
+  --calculus-orange: #ff603b;
+  --gallery-line-dark: rgba(242, 243, 237, 0.2);
+  --gallery-line-light: rgba(18, 21, 16, 0.22);
+  min-height: 100vh;
+  overflow: clip;
+  background: var(--archive-paper);
+  color: var(--mathematical-ink);
+  font-family: var(--font-noto-sans-sc), var(--font-inter), sans-serif;
+}
+
+.darkStage {
+  background: var(--gallery-black);
+  color: var(--archive-paper);
+}
+
+.monoLabel {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.focusLink:focus-visible,
+.mediaControl:focus-visible,
+.promptInput:focus-visible,
+.promptSubmit:focus-visible {
+  outline: 2px solid var(--function-blue);
+  outline-offset: 4px;
+}
+
+.orbitFallback {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.orbitOne,
+.orbitTwo,
+.orbitThree {
+  fill: none;
+  stroke: rgba(242, 243, 237, 0.24);
+  stroke-width: 1.5;
+  transform-origin: center;
+}
+
+.orbitOne {
+  transform: rotate(-18deg);
+}
+
+.orbitTwo {
+  transform: rotate(32deg);
+}
+
+.orbitThree {
+  transform: rotate(66deg);
+}
+
+.orbitCore {
+  fill: var(--archive-paper);
+}
+
+.orbitPointOne {
+  fill: var(--calculus-orange);
+  animation: orbit-point-one 18s linear infinite;
+}
+
+.orbitPointTwo {
+  fill: var(--orbit-green);
+  animation: orbit-point-two 24s linear infinite;
+}
+
+.orbitPointThree {
+  fill: var(--function-blue);
+  animation: orbit-point-three 30s linear infinite;
+}
+
+.orbitAnnotation {
+  fill: rgba(242, 243, 237, 0.58);
+  font: 500 12px var(--font-jetbrains-mono);
+  letter-spacing: 0.14em;
+}
+
+@keyframes orbit-point-one {
+  from {
+    transform: rotate(0deg) translateX(330px) rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg) translateX(330px) rotate(-360deg);
+  }
+}
+
+@keyframes orbit-point-two {
+  from {
+    transform: rotate(120deg) translateX(230px) rotate(-120deg);
+  }
+
+  to {
+    transform: rotate(480deg) translateX(230px) rotate(-480deg);
+  }
+}
+
+@keyframes orbit-point-three {
+  from {
+    transform: rotate(240deg) translateX(370px) rotate(-240deg);
+  }
+
+  to {
+    transform: rotate(600deg) translateX(370px) rotate(-600deg);
+  }
+}
+
+.galleryHero {
+  position: relative;
+  min-height: 92svh;
+  overflow: hidden;
+  background: var(--gallery-black);
+}
+
+.heroMedia,
+.heroVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.heroVideo {
+  object-fit: cover;
+}
+
+.heroScrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(5, 8, 5, 0.72), rgba(5, 8, 5, 0.08) 70%),
+    linear-gradient(0deg, rgba(5, 8, 5, 0.54), transparent 48%);
+}
+
+.heroCopy {
+  position: relative;
+  z-index: 1;
+  min-height: 92svh;
+  max-width: 84rem;
+  margin: 0 auto;
+  padding: 9rem 2rem 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.heroTitle {
+  max-width: 13ch;
+  margin: 1.25rem 0 1rem;
+  font-size: clamp(3.5rem, 9vw, 8.5rem);
+  font-weight: 500;
+  line-height: 0.88;
+  letter-spacing: -0.065em;
+  text-wrap: balance;
+}
+
+.heroDescription {
+  max-width: 34rem;
+  margin: 0;
+  color: rgba(242, 243, 237, 0.76);
+  font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+  line-height: 1.65;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 1.75rem;
+}
+
+.heroPrimary {
+  padding: 0.75rem 1rem;
+  background: var(--archive-paper);
+  color: var(--gallery-black);
+}
+
+.mediaControl {
+  position: absolute;
+  right: 2rem;
+  bottom: 2rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--archive-paper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbitPointOne,
+  .orbitPointTwo,
+  .orbitPointThree {
+    animation: none;
+  }
+
+  .orbitPointOne {
+    transform: translate(250px, -90px);
+  }
+
+  .orbitPointTwo {
+    transform: translate(-160px, 150px);
+  }
+
+  .orbitPointThree {
+    transform: translate(80px, 210px);
+  }
+}

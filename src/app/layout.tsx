@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Cormorant_Garamond } from "next/font/google";
+import {
+  Cormorant_Garamond,
+  Inter,
+  JetBrains_Mono,
+  Noto_Sans_SC,
+} from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -20,6 +25,13 @@ const cormorantGaramond = Cormorant_Garamond({
   weight: ["400", "500", "600"],
 });
 
+const notoSansSC = Noto_Sans_SC({
+  variable: "--font-noto-sans-sc",
+  weight: ["400", "500"],
+  display: "swap",
+  preload: false,
+});
+
 export const metadata: Metadata = {
   title: "Mathiverse — 让数学动起来",
   description:
@@ -37,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${inter.variable} ${jetbrainsMono.variable} ${cormorantGaramond.variable} h-full antialiased`}
+      className={`${inter.variable} ${jetbrainsMono.variable} ${cormorantGaramond.variable} ${notoSansSC.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
