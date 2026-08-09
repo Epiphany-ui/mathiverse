@@ -147,7 +147,79 @@ async function fetchManimGallery(): Promise<RawExample[]> {
   return examples;
 }
 
-// ─── Source 3: Welch Labs videos (high-quality educational Manim scenes) ───
+// ─── Source 3: Fetch Python files from any GitHub repo ───
+
+async function fetchRepoFiles(
+  owner: string,
+  repo: string,
+  subdir?: string,
+): Promise<RawExample[]> {
+  const examples: RawExample[] = [];
+  const path = subdir ? `/contents/${subdir}` : "/contents";
+  const baseUrl = `https://api.github.com/repos/${owner}/${repo}${path}`;
+
+  try {
+    const res = await fetch(baseUrl, {
+      headers: {
+        Accept: "application/vnd.github.v3+json",
+        "User-Agent": "mathiverse-seeder",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      console.warn(`[seed] ${owner}/${repo} returned ${res.status} — skipping`);
+      return examples;
+    }
+
+    const items = (await res.json()) as {
+      name: string;
+      type: string;
+      download_url?: string;
+    }[];
+
+    // Rate-limit: small delay between fetches
+    for (const item of items) {
+      if (item.type !== "file" || !item.download_url) continue;
+      if (!item.name.endsWith(".py")) continue;
+
+      try {
+        const codeRes = await fetch(item.download_url, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!codeRes.ok) continue;
+
+        const code = await codeRes.text();
+        if (!code.includes("class ") || !code.includes("Scene")) continue;
+
+        const lines = code.split("\n").length;
+        const difficulty = lines < 50 ? 1 : lines < 80 ? 2 : 3;
+        const className =
+          code.match(/class\s+(\w+)\s*\(/)?.[1] ?? item.name.replace(".py", "");
+
+        examples.push({
+          title: className,
+          description: `${owner}/${repo}: ${className}`,
+          code,
+          tags: extractTagsFromCode(code),
+          difficulty,
+          source: `${owner}/${repo}`,
+        });
+
+        // Small delay to avoid secondary rate limits
+        await new Promise((r) => setTimeout(r, 100));
+      } catch {
+        // Skip individual errors
+      }
+    }
+  } catch (err) {
+    console.warn(`[seed] Failed to fetch ${owner}/${repo}:`, err);
+  }
+
+  return examples;
+}
+
+// ─── Source 4: Welch Labs videos (high-quality educational Manim scenes) ───
 
 async function fetchWelchLabs(): Promise<RawExample[]> {
   const examples: RawExample[] = [];
@@ -251,10 +323,21 @@ async function main() {
   const existingExamples = extractExistingExamples();
   const galleryExamples = await fetchManimGallery();
   const welchExamples = await fetchWelchLabs();
-  const allExamples = [...existingExamples, ...galleryExamples, ...welchExamples];
+
+  // Top Manim example repos by GitHub stars
+  const tannerGilbert = await fetchRepoFiles("TannerGilbert", "Manim-Examples");
+  const cobanov = await fetchRepoFiles("cobanov", "manim_examples");
+
+  const allExamples = [
+    ...existingExamples,
+    ...galleryExamples,
+    ...welchExamples,
+    ...tannerGilbert,
+    ...cobanov,
+  ];
 
   console.log(
-    `[seed] Got ${existingExamples.length} existing + ${galleryExamples.length} gallery + ${welchExamples.length} WelchLabs = ${allExamples.length} total`,
+    `[seed] Got ${existingExamples.length} existing + ${galleryExamples.length} gallery + ${welchExamples.length} WelchLabs + ${tannerGilbert.length} TannerGilbert + ${cobanov.length} cobanov = ${allExamples.length} total`,
   );
 
   let inserted = 0;
