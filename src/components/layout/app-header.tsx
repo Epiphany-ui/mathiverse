@@ -27,13 +27,18 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { isGalleryHeaderScrolled } from "@/components/home/home-data";
 
 const NAV_ITEMS = [
   { href: "/explore", label: "发现", icon: Compass },
   { href: "/sandbox", label: "创作", icon: Sparkles },
 ] as const;
 
-export function AppHeader() {
+interface AppHeaderProps {
+  appearance?: "default" | "gallery";
+}
+
+export function AppHeader({ appearance = "default" }: AppHeaderProps) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -42,10 +47,21 @@ export function AppHeader() {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
+    const onScroll = () => {
+      setScrolled(
+        appearance === "gallery"
+          ? isGalleryHeaderScrolled(window.scrollY, window.innerHeight)
+          : window.scrollY > 20,
+      );
+    };
+    onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [appearance]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -89,19 +105,28 @@ export function AppHeader() {
       window.location.href = "/";
     }
   };
+  const galleryAtTop = appearance === "gallery" && !scrolled;
 
   return (
     <header
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-        scrolled
-          ? "bg-[#faf9f5]/95 backdrop-blur-md border-b border-[#e6dfd8] shadow-sm"
-          : "bg-transparent border-b border-transparent",
+        galleryAtTop
+          ? "bg-transparent border-b border-transparent"
+          : scrolled
+            ? "bg-[#faf9f5]/95 backdrop-blur-md border-b border-[#e6dfd8] shadow-sm"
+            : "bg-transparent border-b border-transparent",
       )}
     >
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-4">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 shrink-0">
+        <Link
+          href="/"
+          className={cn(
+            "flex items-center gap-2 shrink-0",
+            galleryAtTop && "text-[#f2f3ed]",
+          )}
+        >
           <div className="w-8 h-8 rounded-md bg-[#cc785c] flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
@@ -117,7 +142,10 @@ export function AppHeader() {
               <Button
                 variant={pathname === href ? "secondary" : "ghost"}
                 size="sm"
-                className="gap-1.5"
+                className={cn(
+                  "gap-1.5",
+                  galleryAtTop && "text-[#f2f3ed]",
+                )}
               >
                 <Icon className="w-4 h-4" />
                 {label}
@@ -154,7 +182,10 @@ export function AppHeader() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className={cn(
+                "h-9 w-9",
+                galleryAtTop && "text-[#f2f3ed]",
+              )}
               onClick={() => setSearchOpen(true)}
             >
               <Search className="w-4 h-4" />
@@ -170,7 +201,10 @@ export function AppHeader() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="relative h-9 w-9"
+                className={cn(
+                  "relative h-9 w-9",
+                  galleryAtTop && "text-[#f2f3ed]",
+                )}
                 title="通知"
               >
                 <Bell className="w-4 h-4" />
@@ -219,7 +253,14 @@ export function AppHeader() {
           ) : (
             <>
               <Link href="/auth/login">
-                <Button variant="ghost" size="sm" className="gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "gap-1.5",
+                    galleryAtTop && "text-[#f2f3ed]",
+                  )}
+                >
                   <LogIn className="w-4 h-4" />
                   <span className="hidden sm:inline">登录</span>
                 </Button>
@@ -227,7 +268,10 @@ export function AppHeader() {
               <Link href="/auth/register">
                 <Button
                   size="sm"
-                  className="gap-1.5 bg-[#cc785c] hover:bg-[#a9583e]"
+                  className={cn(
+                    "gap-1.5 bg-[#cc785c] hover:bg-[#a9583e]",
+                    galleryAtTop && "border border-white/20 text-[#f2f3ed]",
+                  )}
                 >
                   <User className="w-4 h-4" />
                   <span className="hidden sm:inline">注册</span>
@@ -241,7 +285,10 @@ export function AppHeader() {
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden"
+          className={cn(
+            "md:hidden",
+            galleryAtTop && "text-[#f2f3ed]",
+          )}
           onClick={() => setMobileOpen(true)}
         >
           <Menu className="w-5 h-5" />

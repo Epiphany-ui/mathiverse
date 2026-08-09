@@ -3,7 +3,7 @@ import test from "node:test";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
 import type { FeedItem } from "../../types/index.ts";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
-import { buildEditorialSlots, buildFieldLinks, selectGalleryFeature } from "./home-data.ts";
+import { buildEditorialSlots, buildFieldLinks, isGalleryHeaderScrolled, selectGalleryFeature } from "./home-data.ts";
 
 function makeItem(
   id: string,
@@ -116,4 +116,11 @@ test("buildFieldLinks returns stable encoded Explore links and real counts", () 
   assert.equal(geometry?.count, 1);
   assert.equal(calculus?.href, "/explore?tag=%E5%BE%AE%E7%A7%AF%E5%88%86");
   assert.equal(calculus?.count, 1);
+});
+
+test("isGalleryHeaderScrolled changes after the gallery threshold", () => {
+  assert.equal(isGalleryHeaderScrolled(40, 1000), false);
+  assert.equal(isGalleryHeaderScrolled(719, 1000), false);
+  assert.equal(isGalleryHeaderScrolled(720, 1000), true);
+  assert.equal(isGalleryHeaderScrolled(80, 0), true);
 });

@@ -112,3 +112,10 @@ export function buildFieldLinks(items: FeedItem[]): MathFieldLink[] {
     };
   });
 }
+
+export function isGalleryHeaderScrolled(
+  scrollY: number,
+  viewportHeight: number,
+): boolean {
+  return scrollY >= Math.max(80, viewportHeight * 0.72);
+}
