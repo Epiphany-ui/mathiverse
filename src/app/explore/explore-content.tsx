@@ -59,8 +59,10 @@ export function ExploreContent() {
       <AppHeader />
       <main className="flex-1 pt-24 px-6 max-w-6xl mx-auto w-full z-10 space-y-8 pb-20">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <Compass className="w-8 h-8 text-primary" />
+        <div className="flex items-center gap-3 animate-spring">
+          <div className="relative">
+            <Compass className="w-8 h-8 text-primary animate-float" />
+          </div>
           <div>
             <h1 className="text-3xl font-bold">发现</h1>
             <p className="text-muted-foreground mt-1">

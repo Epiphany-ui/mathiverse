@@ -40,8 +40,8 @@ function ChatBubble({
         className={cn(
           "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
           isUser
-            ? "bg-gradient-to-br from-secondary to-accent"
-            : "bg-gradient-to-br from-primary to-secondary",
+            ? "bg-[#5db8a6]"
+            : "bg-[#cc785c]",
         )}
       >
         {isUser ? (
@@ -208,7 +208,7 @@ export function ChatPanel({
             )}
             <Button
               size="sm"
-              className="gap-1 h-8 bg-gradient-to-r from-primary to-secondary"
+              className="gap-1 h-8 bg-[#cc785c] hover:bg-[#a9583e] text-white"
               onClick={handleSubmit}
               disabled={isLoading}
             >

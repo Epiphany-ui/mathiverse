@@ -26,6 +26,7 @@ export function LikeButton({
 }: LikeButtonProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [animating, setAnimating] = useState(false);
+  const [burst, setBurst] = useState(false);
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -64,7 +65,9 @@ export function LikeButton({
     // Optimistic update
     setIsLiked(!wasLiked);
     setAnimating(true);
-    setTimeout(() => setAnimating(false), 300);
+    if (!wasLiked) setBurst(true);
+    setTimeout(() => setAnimating(false), 400);
+    setTimeout(() => setBurst(false), 500);
 
     // Persist
     const result = wasLiked
@@ -86,15 +89,19 @@ export function LikeButton({
     <Button
       variant="ghost"
       size="sm"
-      className={cn("gap-1.5 group", className)}
+      className={cn("gap-1.5 group relative btn-press", className)}
       onClick={handleClick}
       disabled={loading}
     >
+      {/* Ring burst on like */}
+      {burst && (
+        <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-heart-ring pointer-events-none" />
+      )}
       <Heart
         className={cn(
           "w-4 h-4 transition-all",
           isLiked && "fill-red-500 text-red-500",
-          animating && "scale-125",
+          animating && "animate-heart-burst",
         )}
       />
       <span className={cn(isLiked && "text-red-500")}>

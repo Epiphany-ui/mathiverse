@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { LikeButton } from "@/components/shared/like-button";
 import { CornerDownRight, Loader2 } from "lucide-react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addComment } from "@/lib/db/interactions";
 import type { Comment } from "@/types";
@@ -75,7 +75,7 @@ function CommentItem({
     <div className={`${depth > 0 ? "ml-10 border-l-2 border-border/30 pl-4" : ""}`}>
       <div className="flex gap-3 py-3">
         <Avatar className="w-8 h-8 shrink-0">
-          <AvatarFallback className="text-xs bg-gradient-to-br from-primary/60 to-secondary/60">
+          <AvatarFallback className="text-xs bg-[#cc785c] text-white">
             {comment.author?.displayName?.slice(0, 1) ?? "?"}
           </AvatarFallback>
         </Avatar>
@@ -125,7 +125,7 @@ function CommentItem({
                   size="sm"
                   onClick={handleReply}
                   disabled={!replyText.trim() || submitting}
-                  className="bg-gradient-to-r from-primary to-secondary text-xs h-8"
+                  className="bg-[#cc785c] hover:bg-[#a9583e] text-white text-xs h-8"
                 >
                   {submitting ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -178,11 +178,15 @@ export function CommentList({
   const [newComment, setNewComment] = useState("");
   const [localComments, setLocalComments] = useState(comments);
   const [submitting, setSubmitting] = useState(false);
+  const prevTargetRef = React.useRef(targetId);
 
-  // Sync when props change (e.g. navigation)
-  if (comments !== localComments && submitting === false) {
-    // Only sync if we haven't optimistically added comments
-  }
+  // Sync when props change (navigation to a different page)
+  useEffect(() => {
+    if (prevTargetRef.current !== targetId) {
+      setLocalComments(comments);
+      prevTargetRef.current = targetId;
+    }
+  }, [comments, targetId]);
 
   const handleAdd = useCallback(async () => {
     if (!newComment.trim() || submitting) return;
@@ -252,7 +256,7 @@ export function CommentList({
           size="sm"
           onClick={handleAdd}
           disabled={!newComment.trim() || submitting}
-          className="bg-gradient-to-r from-primary to-secondary"
+          className="bg-[#cc785c] hover:bg-[#a9583e] text-white"
         >
           {submitting ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
@@ -274,8 +278,12 @@ export function CommentList({
               comment={c}
               targetType={targetType}
               targetId={targetId}
-              onReplyAdded={() => {
-                // Refresh: could re-validate, but for MVP we just keep the UI state
+              onReplyAdded={async () => {
+                const supabase = createClient();
+                if (!supabase) return;
+                const { getCommentsForTarget } = await import("@/lib/db/queries");
+                const updated = await getCommentsForTarget(supabase, targetType, targetId);
+                setLocalComments(updated);
               }}
             />
           ))}

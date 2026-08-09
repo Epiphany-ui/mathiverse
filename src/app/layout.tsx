@@ -24,6 +24,9 @@ export const metadata: Metadata = {
   title: "Mathiverse — 让数学动起来",
   description:
     "数学可视化学习社区。浏览、创作、讨论由 Manim 驱动的数学动画，用 AI 一键生成可视化代码。",
+  other: {
+    "darkreader-lock": "darkreader-disable",
+  },
 };
 
 export default function RootLayout({
@@ -39,7 +42,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <TooltipProvider>
-          {children}
+          <div className="animate-page-enter">
+            {children}
+          </div>
         </TooltipProvider>
         <Toaster richColors />
       </body>

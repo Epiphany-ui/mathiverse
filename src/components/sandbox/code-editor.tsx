@@ -10,81 +10,81 @@ import { searchKeymap } from "@codemirror/search";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
 
-// Custom dark theme matching Mathiverse design system
+// Custom dark theme matching Mathiverse warm design system
 const mathiverseTheme = EditorView.theme(
   {
     "&": {
-      backgroundColor: "oklch(0.13 0.02 265 / 0.6)",
-      color: "#e2e8f0",
+      backgroundColor: "#181715",
+      color: "#faf9f5",
       height: "100%",
       fontSize: "14px",
     },
     ".cm-content": {
-      caretColor: "#7c3aed",
+      caretColor: "#cc785c",
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
       lineHeight: "1.7",
       padding: "16px 0",
     },
     ".cm-gutters": {
-      backgroundColor: "oklch(0.13 0.02 265 / 0.3)",
-      color: "#64748b",
+      backgroundColor: "#1f1e1b",
+      color: "#8e8b82",
       borderRight: "1px solid rgba(255,255,255,0.06)",
       fontSize: "12px",
     },
     ".cm-activeLineGutter": {
-      backgroundColor: "rgba(124, 58, 237, 0.15)",
-      color: "#a78bfa",
+      backgroundColor: "rgba(204, 120, 92, 0.12)",
+      color: "#cc785c",
     },
     ".cm-activeLine": {
-      backgroundColor: "rgba(124, 58, 237, 0.08)",
+      backgroundColor: "rgba(204, 120, 92, 0.06)",
     },
     ".cm-cursor": {
-      borderLeftColor: "#7c3aed",
+      borderLeftColor: "#cc785c",
     },
     ".cm-selectionBackground": {
-      backgroundColor: "rgba(124, 58, 237, 0.25) !important",
+      backgroundColor: "rgba(204, 120, 92, 0.2) !important",
     },
     ".cm-matchingBracket": {
-      backgroundColor: "rgba(124, 58, 237, 0.2)",
-      outline: "1px solid #7c3aed",
+      backgroundColor: "rgba(204, 120, 92, 0.15)",
+      outline: "1px solid #cc785c",
     },
     ".cm-tooltip": {
-      backgroundColor: "oklch(0.18 0.02 265)",
-      border: "1px solid rgba(124, 58, 237, 0.3)",
-      color: "#e2e8f0",
+      backgroundColor: "#252320",
+      border: "1px solid rgba(204, 120, 92, 0.25)",
+      color: "#faf9f5",
     },
     ".cm-search": {
-      backgroundColor: "oklch(0.18 0.02 265)",
+      backgroundColor: "#252320",
       "& input": {
-        backgroundColor: "oklch(0.15 0.02 265)",
-        color: "#e2e8f0",
+        backgroundColor: "#1f1e1b",
+        color: "#faf9f5",
         border: "1px solid rgba(255,255,255,0.1)",
         padding: "4px 8px",
         borderRadius: "4px",
       },
       "& button": {
-        color: "#a78bfa",
+        color: "#cc785c",
       },
     },
   },
   { dark: true },
 );
 
-// Python syntax highlighting colors
+// Python syntax highlighting with warm Anthropic tones
 const pythonHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: "#c084fc" },
-  { tag: tags.string, color: "#34d399" },
-  { tag: tags.number, color: "#fbbf24" },
-  { tag: tags.comment, color: "#64748b", fontStyle: "italic" },
-  { tag: tags.function(tags.variableName), color: "#60a5fa" },
-  { tag: tags.definition(tags.variableName), color: "#60a5fa" },
-  { tag: tags.typeName, color: "#38bdf8" },
-  { tag: tags.operator, color: "#e879f9" },
-  { tag: tags.className, color: "#38bdf8" },
-  { tag: tags.propertyName, color: "#a78bfa" },
-  { tag: tags.macroName, color: "#06b6d4" },
-  { tag: tags.standard(tags.function(tags.variableName)), color: "#60a5fa" },
-  { tag: tags.standard(tags.typeName), color: "#38bdf8" },
+  { tag: tags.keyword, color: "#cc785c" },
+  { tag: tags.string, color: "#5db8a6" },
+  { tag: tags.number, color: "#e8a55a" },
+  { tag: tags.comment, color: "#8e8b82", fontStyle: "italic" },
+  { tag: tags.function(tags.variableName), color: "#5db8a6" },
+  { tag: tags.definition(tags.variableName), color: "#5db8a6" },
+  { tag: tags.typeName, color: "#e8a55a" },
+  { tag: tags.operator, color: "#cc785c" },
+  { tag: tags.className, color: "#e8a55a" },
+  { tag: tags.propertyName, color: "#e8a55a" },
+  { tag: tags.macroName, color: "#5db8a6" },
+  { tag: tags.standard(tags.function(tags.variableName)), color: "#5db8a6" },
+  { tag: tags.standard(tags.typeName), color: "#e8a55a" },
 ]);
 
 interface CodeEditorProps {
@@ -251,7 +251,7 @@ export function CodeEditor({
         ref={canvasOverlayRef}
         className="absolute inset-0 pointer-events-none z-10 opacity-0"
         style={{
-          boxShadow: "inset 0 0 120px rgba(124, 58, 237, 0.25), inset 0 0 40px rgba(59, 130, 246, 0.15)",
+          boxShadow: "inset 0 0 120px rgba(204, 120, 92, 0.2), inset 0 0 40px rgba(232, 165, 90, 0.1)",
           transition: "opacity 0.6s ease-out",
         }}
       />

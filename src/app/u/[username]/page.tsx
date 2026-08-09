@@ -82,7 +82,7 @@ export default async function UserProfilePage({
         <GlassCard className="p-6" hover={false}>
           <div className="flex items-start gap-6">
             <Avatar className="w-20 h-20 shrink-0">
-              <AvatarFallback className="text-2xl bg-gradient-to-br from-primary to-secondary text-white">
+              <AvatarFallback className="text-2xl bg-[#cc785c] text-white">
                 {(profile.displayName ?? "U").slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>

@@ -41,7 +41,7 @@ export default function NotFoundPage() {
             <Link href="/explore">
               <Button
                 size="sm"
-                className="gap-1.5 w-full bg-gradient-to-r from-primary to-secondary"
+                className="gap-1.5 w-full bg-[#cc785c] hover:bg-[#a9583e] text-white"
               >
                 <Compass className="w-4 h-4" />
                 浏览社区

@@ -21,6 +21,7 @@ import {
   Menu,
   LogOut,
   Settings,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -35,7 +36,16 @@ const NAV_ITEMS = [
 export function AppHeader() {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -43,16 +53,33 @@ export function AppHeader() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchUnreadCount(session.user.id);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
+        if (session?.user) {
+          fetchUnreadCount(session.user.id);
+        }
       },
     );
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUnreadCount = async (userId: string) => {
+    const supabase = createClient();
+    if (!supabase) return;
+    const { count } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_read", false);
+    setUnreadCount(count ?? 0);
+  };
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -64,7 +91,14 @@ export function AppHeader() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-[#faf9f5] border-b border-[#e6dfd8]">
+    <header
+      className={cn(
+        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+        scrolled
+          ? "bg-[#faf9f5]/95 backdrop-blur-md border-b border-[#e6dfd8] shadow-sm"
+          : "bg-transparent border-b border-transparent",
+      )}
+    >
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
@@ -130,6 +164,24 @@ export function AppHeader() {
 
         {/* Auth / User */}
         <div className="flex items-center gap-2">
+          {/* Notification bell — only when logged in */}
+          {user && (
+            <Link href="/settings">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9"
+                title="通知"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#c64545] text-white text-[10px] font-bold flex items-center justify-center animate-heart-burst">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
+          )}
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger>
@@ -186,9 +238,38 @@ export function AppHeader() {
         </div>
 
         {/* Mobile menu */}
-        <Button variant="ghost" size="icon" className="md:hidden">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden"
+          onClick={() => setMobileOpen(true)}
+        >
           <Menu className="w-5 h-5" />
         </Button>
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <div
+              className="absolute inset-0 bg-black/20"
+              onClick={() => setMobileOpen(false)}
+            />
+            <div className="absolute right-0 top-0 bottom-0 w-64 bg-[#faf9f5] shadow-lg pt-16 px-4">
+              <nav className="flex flex-col gap-2">
+                {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={() => setMobileOpen(false)}>
+                    <Button
+                      variant={pathname === href ? "secondary" : "ghost"}
+                      size="sm"
+                      className="gap-2 w-full justify-start"
+                    >
+                      <Icon className="w-4 h-4" />
+                      {label}
+                    </Button>
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

@@ -128,7 +128,7 @@ export default function SettingsPage() {
           {/* Avatar */}
           <div className="flex items-center gap-4">
             <Avatar className="w-16 h-16">
-              <AvatarFallback className="text-xl bg-gradient-to-br from-primary to-secondary text-white">
+              <AvatarFallback className="text-xl bg-[#cc785c] text-white">
                 {displayName
                   ? displayName.slice(0, 2).toUpperCase()
                   : "?"}
@@ -198,7 +198,7 @@ export default function SettingsPage() {
           <Button
             onClick={handleSave}
             disabled={saving || saved}
-            className="bg-gradient-to-r from-primary to-secondary gap-1.5"
+            className="bg-[#cc785c] hover:bg-[#a9583e] text-white gap-1.5"
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

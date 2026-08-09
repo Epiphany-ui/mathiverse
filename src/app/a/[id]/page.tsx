@@ -84,9 +84,9 @@ export default async function ArticlePage({
         </Link>
 
         {/* Cover */}
-        <div className="aspect-video bg-gradient-to-br from-primary/20 via-secondary/20 to-accent/20 rounded-xl flex items-center justify-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(124,58,237,0.3),transparent_70%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(6,182,212,0.2),transparent_70%)]" />
+        <div className="aspect-video bg-[#efe9de] rounded-xl flex items-center justify-center relative overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(204,120,92,0.15),transparent_70%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(93,184,166,0.12),transparent_70%)]" />
           <div className="relative z-10 text-center">
             <h1 className="text-3xl font-bold px-8">{article.title}</h1>
             <p className="text-muted-foreground text-sm mt-2">
@@ -114,7 +114,7 @@ export default async function ArticlePage({
             <Link href={`/u/${article.author?.username}`}>
               <div className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <Avatar className="w-8 h-8">
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white text-xs">
+                  <AvatarFallback className="bg-[#cc785c] text-white text-xs">
                     {article.author?.displayName?.slice(0, 1) ?? "?"}
                   </AvatarFallback>
                 </Avatar>
@@ -155,7 +155,7 @@ export default async function ArticlePage({
                   <Link key={viz.id} href={`/v/${viz.id}`}>
                     <GlassCard className="overflow-hidden group cursor-pointer hover:border-primary/30 transition-colors">
                       <div className="flex items-center p-4 gap-4">
-                        <div className="w-32 h-20 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-lg flex items-center justify-center shrink-0 relative group-hover:from-primary/20 group-hover:to-secondary/20 transition-all">
+                        <div className="w-32 h-20 bg-[#efe9de] rounded-lg flex items-center justify-center shrink-0 relative transition-all">
                           <Play className="w-6 h-6 text-white/50 group-hover:text-white/80 group-hover:scale-110 transition-all" />
                         </div>
                         <div className="space-y-1 min-w-0">

@@ -10,7 +10,7 @@ export default function ArticleLoading() {
       <AppHeader />
       <main className="flex-1 pt-24 px-6 max-w-3xl mx-auto w-full z-10 space-y-8 pb-20">
         {/* Cover skeleton */}
-        <div className="aspect-video bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 rounded-xl flex items-center justify-center">
+        <div className="aspect-video bg-[#efe9de] rounded-xl flex items-center justify-center">
           <div className="w-10 h-10 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
         </div>
 

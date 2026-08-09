@@ -108,7 +108,7 @@ export default function CreateArticlePage() {
             </Button>
             <Button
               size="sm"
-              className="gap-1.5 bg-gradient-to-r from-primary to-secondary"
+              className="gap-1.5 bg-[#cc785c] hover:bg-[#a9583e] text-white"
               onClick={handlePublish}
               disabled={publishing}
             >

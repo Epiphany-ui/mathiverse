@@ -101,7 +101,7 @@ export function RegisterForm() {
         </div>
         <Button
           type="submit"
-          className="w-full bg-gradient-to-r from-primary to-secondary"
+          className="w-full bg-[#cc785c] hover:bg-[#a9583e] text-white"
           disabled={loading}
         >
           {loading ? "注册中..." : "注册"}

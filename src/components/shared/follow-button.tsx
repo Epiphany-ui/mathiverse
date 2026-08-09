@@ -72,7 +72,7 @@ export function FollowButton({ userId, className }: FollowButtonProps) {
         "gap-1.5 shrink-0",
         isFollowing
           ? ""
-          : "bg-gradient-to-r from-primary to-secondary",
+          : "bg-[#cc785c] hover:bg-[#a9583e] text-white",
         className,
       )}
       onClick={handleToggle}

@@ -84,7 +84,7 @@ export default async function VisualizationPage({
           {viz.videoUrl ? (
             <VideoPlayer src={viz.videoUrl} poster={viz.posterUrl ?? undefined} />
           ) : (
-            <div className="aspect-video bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex flex-col items-center justify-center gap-3">
+            <div className="aspect-video bg-[#efe9de] flex flex-col items-center justify-center gap-3">
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
                 <Eye className="w-8 h-8 text-primary/50" />
               </div>
@@ -120,7 +120,7 @@ export default async function VisualizationPage({
             <Link href={`/u/${viz.author?.username}`}>
               <div className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <Avatar className="w-8 h-8">
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white text-xs">
+                  <AvatarFallback className="bg-[#cc785c] text-white text-xs">
                     {viz.author?.displayName?.slice(0, 1) ?? "?"}
                   </AvatarFallback>
                 </Avatar>

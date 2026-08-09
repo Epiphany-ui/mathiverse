@@ -77,7 +77,7 @@ export function SearchContent() {
             <Button
               type="submit"
               size="sm"
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-gradient-to-r from-primary to-secondary"
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#cc785c] hover:bg-[#a9583e] text-white"
             >
               搜索
             </Button>
