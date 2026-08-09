@@ -82,6 +82,7 @@ export interface FeedItem {
   description?: string;
   coverUrl?: string | null;
   posterUrl?: string | null;
+  videoUrl?: string | null;
   tags: string[];
   author: Pick<Profile, "id" | "username" | "displayName" | "avatarUrl">;
   likesCount: number;

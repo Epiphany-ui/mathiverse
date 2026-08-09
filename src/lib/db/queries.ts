@@ -265,6 +265,7 @@ export async function buildFeedItems(
     title: v.title,
     description: v.description,
     posterUrl: v.poster_url ?? v.posterUrl ?? null,
+    videoUrl: v.video_url ?? v.videoUrl ?? null,
     tags: v.tags ?? [],
     author: normProfile(v.profiles) ?? { id: v.authorId ?? v.author_id ?? "unknown", username: "unknown", displayName: "Unknown", avatarUrl: null },
     likesCount: v.likes_count ?? v.likesCount ?? 0,
