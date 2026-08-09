@@ -119,3 +119,10 @@ export function isGalleryHeaderScrolled(
 ): boolean {
   return scrollY >= Math.max(80, viewportHeight * 0.72);
 }
+
+export function buildSandboxHref(prompt: string): string | null {
+  const normalized = prompt.trim();
+  return normalized
+    ? `/sandbox?prompt=${encodeURIComponent(normalized)}`
+    : null;
+}

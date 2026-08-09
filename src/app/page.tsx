@@ -1,3 +1,4 @@
+import { ConceptPrompt } from "@/components/home/concept-prompt";
 import { EditorialFeed } from "@/components/home/editorial-feed";
 import { ExhibitionIndex } from "@/components/home/exhibition-index";
 import { GalleryHero } from "@/components/home/gallery-hero";
@@ -33,7 +34,7 @@ export default async function Home() {
       <main className={styles.lightStage}>
         <MathFieldMap fields={fields} />
         <EditorialFeed slots={slots} />
-        <div id="concept-prompt-slot" />
+        <ConceptPrompt />
       </main>
     </div>
   );

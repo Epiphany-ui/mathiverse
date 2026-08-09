@@ -3,7 +3,7 @@ import test from "node:test";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
 import type { FeedItem } from "../../types/index.ts";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
-import { buildEditorialSlots, buildFieldLinks, isGalleryHeaderScrolled, selectGalleryFeature } from "./home-data.ts";
+import { buildEditorialSlots, buildFieldLinks, buildSandboxHref, isGalleryHeaderScrolled, selectGalleryFeature } from "./home-data.ts";
 
 function makeItem(
   id: string,
@@ -123,4 +123,15 @@ test("isGalleryHeaderScrolled changes after the gallery threshold", () => {
   assert.equal(isGalleryHeaderScrolled(719, 1000), false);
   assert.equal(isGalleryHeaderScrolled(720, 1000), true);
   assert.equal(isGalleryHeaderScrolled(80, 0), true);
+});
+
+test("buildSandboxHref trims and encodes a mathematical prompt", () => {
+  assert.equal(
+    buildSandboxHref("  可视化 ∂f/∂x 的几何意义  "),
+    "/sandbox?prompt=%E5%8F%AF%E8%A7%86%E5%8C%96%20%E2%88%82f%2F%E2%88%82x%20%E7%9A%84%E5%87%A0%E4%BD%95%E6%84%8F%E4%B9%89",
+  );
+});
+
+test("buildSandboxHref rejects an empty prompt", () => {
+  assert.equal(buildSandboxHref("   "), null);
 });

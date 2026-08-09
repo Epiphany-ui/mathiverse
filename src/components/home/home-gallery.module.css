@@ -614,3 +614,17 @@
     transition: none;
   }
 }
+
+.promptSection { max-width: 84rem; margin: 0 auto; padding: 7rem 2rem 9rem; border-top: 1px solid var(--gallery-line-light); }
+.promptSection h2 { max-width: 12ch; margin: 1.5rem 0 3rem; font-size: clamp(3rem, 8vw, 7rem); font-weight: 500; line-height: 0.9; letter-spacing: -0.06em; }
+.promptForm { max-width: 64rem; }
+.promptLabel { display: block; margin-bottom: 0.75rem; }
+.promptRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-bottom: 1px solid var(--mathematical-ink); }
+.promptInput { min-width: 0; border: 0; background: transparent; color: inherit; padding: 1rem 0; font: inherit; font-size: clamp(1.1rem, 2.5vw, 1.75rem); }
+.promptSubmit { border: 0; background: transparent; color: inherit; padding: 1rem 0 1rem 2rem; font: inherit; font-weight: 500; }
+.promptError { color: #a52f24; margin: 0.75rem 0 0; }
+@media (max-width: 640px) {
+  .promptSection { padding: 5rem 1rem 6rem; }
+  .promptRow { grid-template-columns: 1fr; }
+  .promptSubmit { padding-left: 0; text-align: left; }
+}

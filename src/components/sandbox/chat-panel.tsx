@@ -17,6 +17,7 @@ interface ChatPanelProps {
   onSend: (content: string) => void;
   onCancel: () => void;
   onClear: () => void;
+  initialPrompt?: string;
   className?: string;
 }
 
@@ -26,7 +27,6 @@ function ChatBubble({
   message: ChatMessage;
 }) {
   const isUser = message.role === "user";
-  const isWelcome = message.id === "welcome";
 
   return (
     <div
@@ -113,6 +113,7 @@ export function ChatPanel({
   onSend,
   onCancel,
   onClear,
+  initialPrompt = "",
   className,
 }: ChatPanelProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -185,6 +186,7 @@ export function ChatPanel({
         <div className="relative">
           <Textarea
             ref={inputRef}
+            defaultValue={initialPrompt}
             placeholder="描述你想生成的数学动画..."
             className="min-h-[60px] resize-none bg-white/5 border-white/10 pr-10 text-sm"
             onKeyDown={handleKeyDown}
