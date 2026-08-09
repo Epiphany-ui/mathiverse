@@ -15,7 +15,7 @@ export function GalleryHero({ feature }: GalleryHeroProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [reducedMotion, setReducedMotion] = useState<boolean | null>(null);
   const [videoFailed, setVideoFailed] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(true);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -29,14 +29,24 @@ export function GalleryHero({ feature }: GalleryHeroProps) {
     feature?.videoUrl && reducedMotion === false && !videoFailed,
   );
 
+  const syncPausedState = () => {
+    setPaused(videoRef.current?.paused ?? true);
+  };
+
   const togglePlayback = async () => {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
-      await video.play();
+      try {
+        await video.play();
+      } catch {
+        syncPausedState();
+        return;
+      }
     } else {
       video.pause();
     }
+    syncPausedState();
   };
 
   const title = feature?.title ?? "轨道、引力与三体运动";
@@ -59,8 +69,9 @@ export function GalleryHero({ feature }: GalleryHeroProps) {
             playsInline
             preload="metadata"
             onError={() => setVideoFailed(true)}
-            onPause={() => setPaused(true)}
-            onPlay={() => setPaused(false)}
+            onLoadedMetadata={syncPausedState}
+            onPause={syncPausedState}
+            onPlay={syncPausedState}
           />
         ) : (
           <MathematicalFallback />
