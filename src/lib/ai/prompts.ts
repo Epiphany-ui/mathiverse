@@ -5,17 +5,26 @@
  * FEW_SHOT_EXAMPLES provide high-quality Manim code examples.
  */
 
-export const SYSTEM_PROMPT = `你是 Mathiverse 的 Manim 动画专家助手。你的任务是根据用户的自然语言描述，生成高质量的 Manim Community v0.19 Python 代码。
+import type { AIMessage } from "./client";
+
+export const SYSTEM_PROMPT = `你是 Mathiverse 的 Manim 动画专家助手。你的任务是根据用户的自然语言描述，生成高质量的 Manim Community v0.19+ Python 代码。
+
+## 推理步骤（在生成代码前，先在脑中规划）
+
+对于用户的请求，按以下步骤思考：
+1. **拆解**：用户描述涉及几个数学对象？它们之间是什么关系？
+2. **布局**：需要坐标系(Axes/NumberPlane/ComplexPlane)？3D空间(ThreeDScene)？还是自由排版？
+3. **时间线**：动画分几个阶段？每个阶段展示什么？（用注释标注阶段）
+4. **动画选择**：Write/Create/Transform/FadeIn/MoveAlongPath/ApplyMatrix/...
+5. **参数化**：哪些量需要 ValueTracker + always_redraw 实现动态更新？
 
 ## 两种工作模式
 
 ### 模式 1: 创建新代码
-当用户要求创建新的可视化，或当前没有代码时：
 - 从头生成完整的 Manim 场景
-- 输出完整的可运行 Python 代码
+- 在代码中用中文注释标注推理步骤中的阶段划分
 
 ### 模式 2: 修改现有代码
-当用户要求修改、改进、或调试现有代码时（会附带"当前代码"）：
 - 基于现有代码进行修改
 - 保持代码结构和风格一致
 - 只修改用户要求的部分，不要重写整个场景
@@ -23,28 +32,32 @@ export const SYSTEM_PROMPT = `你是 Mathiverse 的 Manim 动画专家助手。�
 
 ## 规则
 1. 只输出有效的 Python 代码，不要输出额外的解释文字或 Markdown 标记。
-2. 代码必须能直接用 Manim Community v0.19 渲染运行。
-3. 使用中文注释解释关键步骤。
-4. 优先使用以下 Manim 对象：MathTex, Tex, Axes, NumberPlane, VGroup, always_redraw, ValueTracker
+2. 代码必须能直接用 Manim Community v0.19+ 渲染运行。
+3. 使用中文注释解释关键步骤和阶段划分。
+4. 优先使用：MathTex, Tex, Axes, NumberPlane, VGroup, always_redraw, ValueTracker, TracedPath
 5. 动画要流畅美观，使用合适的颜色和时长。
 6. 场景类名使用有意义的英文名。
-7. 代码结构清晰，适当拆分方法。
-8. 如果用户的描述不清晰，生成一个合理的默认可视化。
+7. 复杂动画拆分为 helper 方法，保持 construct() 清晰。
+8. 若描述不清晰，生成合理的默认可视化。
 
 ## 常用的 Manim 模式
-- 坐标系可视化：使用 Axes + plot + always_redraw
-- 几何图形：使用 Circle, Square, Polygon, Dot + Transform/animate
-- 公式展示：使用 MathTex + Write/Transform
-- 3D 场景：继承 ThreeDScene，使用 set_camera_orientation
-- 参数动画：使用 ValueTracker + always_redraw
+- 坐标系可视化：Axes + plot + always_redraw
+- 几何图形：Circle, Square, Polygon, Dot + Transform/animate
+- 公式展示：MathTex + Write/Transform
+- 3D 场景：ThreeDScene + set_camera_orientation + begin_ambient_camera_rotation
+- 参数动画：ValueTracker + always_redraw
+- 运动轨迹：TracedPath + MoveAlongPath
+- 线性变换：ApplyMatrix
+- 概率统计：BarChart / Axes + plot
 
 ## 示例输出格式
 \`\`\`python
 from manim import *
+import numpy as np
 
 class SceneName(Scene):
     def construct(self):
-        # 你的代码
+        # 阶段 1: ...
         pass
 \`\`\``;
 
@@ -680,21 +693,63 @@ class RotatingTorus(ThreeDScene):
 ];
 
 /**
+ * Format retrieved examples for injection into the system prompt.
+ */
+export function formatRetrievedExamples(
+  examples: { title: string; description: string; code: string }[],
+): string {
+  if (!examples.length) return "";
+
+  return examples
+    .map(
+      (ex, i) =>
+        `### 示例 ${i + 1}: ${ex.title}\n${ex.description}\n\n\`\`\`python\n${ex.code}\n\`\`\``,
+    )
+    .join("\n\n---\n\n");
+}
+
+/**
  * Build the full message array for a chat completion request.
+ * Now async — fetches relevant examples via RAG.
  * @param history Previous user/assistant messages
  * @param userMessage The latest user message
  * @param currentCode Optional current editor code for context-aware generation
  */
-export function buildMessages(
+export async function buildMessages(
   history: { role: "user" | "assistant"; content: string }[],
   userMessage: string,
   currentCode?: string,
-) {
+): Promise<AIMessage[]> {
   const systemContent = buildSystemPrompt(currentCode);
 
+  // Try RAG retrieval; fall back to static examples if unavailable
+  let exampleSection = "";
+  try {
+    const { retrieveExamples } = await import("./retrieval");
+    const examples = await retrieveExamples(userMessage, 3);
+    if (examples.length) {
+      exampleSection = `\n\n## 参考示例（与当前请求最相似）\n\n${formatRetrievedExamples(examples)}`;
+    }
+  } catch {
+    // RAG unavailable — use static fallback below
+  }
+
+  if (!exampleSection) {
+    // Static fallback: use a subset of existing few-shot examples
+    const codeExamples = FEW_SHOT_EXAMPLES
+      .filter((_, i) => i % 2 === 1) // assistant responses (odd indices)
+      .map((ex) => ({
+        title: "示例",
+        description: "",
+        code: ex.content,
+      }))
+      .slice(0, 3);
+
+    exampleSection = `\n\n## 参考示例\n\n${formatRetrievedExamples(codeExamples)}`;
+  }
+
   return [
-    { role: "system" as const, content: systemContent },
-    ...FEW_SHOT_EXAMPLES,
+    { role: "system" as const, content: systemContent + exampleSection },
     ...history,
     { role: "user" as const, content: userMessage },
   ];
@@ -759,6 +814,8 @@ export async function generateMetadata(
   }
 
   try {
+    const { MODELS } = await import("./client");
+
     const response = await chatCompletion({
       messages: [
         { role: "system", content: METADATA_SYSTEM_PROMPT },
@@ -767,6 +824,7 @@ export async function generateMetadata(
           content: `用户需求: ${userPrompt}\n\n代码:\n\`\`\`python\n${code.slice(0, 3000)}\n\`\`\``,
         },
       ],
+      model: MODELS.metadata,
       temperature: 0.5,
       max_tokens: 300,
     });

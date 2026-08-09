@@ -51,6 +51,50 @@ export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
 
       setIsLoading(true);
 
+      // Fix mode: use dedicated non-streaming endpoint
+      if (isFixMode) {
+        try {
+          const res = await fetch("/api/chat/fix", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code: currentCode,
+              error: content,
+            }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) throw new Error(data.error ?? "修复失败");
+
+          const fixedCode = data.code;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: "已根据错误信息修复代码。", code: fixedCode }
+                : m,
+            ),
+          );
+
+          if (fixedCode && onCodeExtracted) {
+            onCodeExtracted(fixedCode);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "修复失败";
+          setError(msg);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: `❌ 修复失败: ${msg}` }
+                : m,
+            ),
+          );
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       try {
         const controller = new AbortController();
         abortRef.current = controller;

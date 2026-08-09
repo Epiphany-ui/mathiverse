@@ -9,7 +9,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { chatCompletionStream, isConfigured } from "@/lib/ai/client";
+import { chatCompletionStream, isConfigured, MODELS } from "@/lib/ai/client";
 import { buildMessages } from "@/lib/ai/prompts";
 
 export const runtime = "nodejs";
@@ -47,20 +47,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build conversation with system prompt + few-shot examples
-    const history = messages.slice(0, -1); // all except last
-    const fullMessages = buildMessages(
-      history.filter(
-        (m: { role: string }) => m.role === "user" || m.role === "assistant",
-      ),
-      lastUserMsg,
-      currentCode,
+    // Build conversation with system prompt + RAG examples
+    const history = messages.slice(0, -1).filter(
+      (m: { role: string }) => m.role === "user" || m.role === "assistant",
     );
+
+    // Now async — fetches RAG examples
+    const fullMessages = await buildMessages(history, lastUserMsg, currentCode);
 
     const stream = await chatCompletionStream({
       messages: fullMessages,
-      temperature: 0.3,
-      max_tokens: 4096,
+      model: MODELS.code,
+      temperature: 0.4,
+      max_tokens: 8192,
     });
 
     return new Response(stream, {
