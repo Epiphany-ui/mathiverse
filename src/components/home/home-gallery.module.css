@@ -221,3 +221,396 @@
     transform: translate(80px, 210px);
   }
 }
+
+.exhibitionIndex {
+  display: grid;
+  grid-template-columns: 1.35fr 0.8fr 0.85fr;
+  border-top: 1px solid var(--gallery-line-dark);
+  border-bottom: 1px solid var(--gallery-line-dark);
+}
+
+.indexEntry {
+  min-height: 10rem;
+  padding: 1.5rem 2rem;
+  border-right: 1px solid var(--gallery-line-dark);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.indexLink,
+.indexFallback {
+  max-width: 24ch;
+  color: inherit;
+  font-size: clamp(1.1rem, 2vw, 1.65rem);
+  line-height: 1.25;
+}
+
+.indexLink:focus-visible,
+.fieldNode:focus-visible,
+.editorialLink:focus-visible {
+  outline: 2px solid var(--function-blue);
+  outline-offset: 4px;
+}
+
+.lightStage {
+  background: var(--archive-paper);
+  color: var(--mathematical-ink);
+}
+
+.fieldSection,
+.communitySection {
+  max-width: 84rem;
+  margin: 0 auto;
+  padding: 8rem 2rem;
+}
+
+.sectionHeading {
+  display: grid;
+  grid-template-columns: 4fr 8fr;
+  gap: 2rem;
+  align-items: end;
+  margin-bottom: 4rem;
+  border-bottom: 1px solid var(--gallery-line-light);
+  padding-bottom: 1.25rem;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+  font-size: clamp(2.5rem, 6vw, 5.75rem);
+  font-weight: 500;
+  line-height: 0.95;
+  letter-spacing: -0.055em;
+}
+
+.fieldMap {
+  position: relative;
+  min-height: 30rem;
+}
+
+.fieldLines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--gallery-line-light);
+}
+
+.fieldNode {
+  position: absolute;
+  isolation: isolate;
+  display: grid;
+  gap: 0.2rem;
+  color: inherit;
+}
+
+.fieldNode1 {
+  left: 6%;
+  top: 15%;
+}
+
+.fieldNode2 {
+  left: 33%;
+  top: 52%;
+}
+
+.fieldNode3 {
+  left: 57%;
+  top: 18%;
+}
+
+.fieldNode4 {
+  right: 6%;
+  top: 58%;
+}
+
+.fieldNode5 {
+  left: 72%;
+  top: 7%;
+}
+
+.fieldPoint {
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-bottom: 0.75rem;
+  border-radius: 50%;
+  background: var(--function-blue);
+}
+
+.fieldNode[data-accent="green"] .fieldPoint {
+  background: var(--orbit-green);
+}
+
+.fieldNode[data-accent="orange"] .fieldPoint {
+  background: var(--calculus-orange);
+}
+
+.fieldConstruction {
+  position: absolute;
+  z-index: -1;
+  left: -2.5rem;
+  top: -2.5rem;
+  width: 8rem;
+  height: 8rem;
+  opacity: 0;
+  transform: scale(0.86) rotate(-5deg);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  pointer-events: none;
+}
+
+.fieldConstruction::before,
+.fieldConstruction::after {
+  content: "";
+  position: absolute;
+  inset: 0.75rem;
+  border: 1px solid currentColor;
+}
+
+.fieldConstruction[data-field="geometry"]::before {
+  border-radius: 50%;
+}
+
+.fieldConstruction[data-field="geometry"]::after {
+  inset: 2rem 0.5rem;
+  border-width: 1px 0 0;
+  transform: rotate(-24deg);
+}
+
+.fieldConstruction[data-field="calculus"]::before {
+  inset: 1rem 0.5rem 2rem;
+  border-width: 0 0 1px 1px;
+  transform: skewY(-18deg);
+}
+
+.fieldConstruction[data-field="calculus"]::after {
+  inset: 3rem 0.25rem;
+  border-width: 1px 0 0;
+  transform: rotate(18deg);
+}
+
+.fieldConstruction[data-field="algebra"] {
+  background-image:
+    linear-gradient(var(--gallery-line-light) 1px, transparent 1px),
+    linear-gradient(90deg, var(--gallery-line-light) 1px, transparent 1px);
+  background-size: 1.25rem 1.25rem;
+}
+
+.fieldConstruction[data-field="probability"] {
+  background:
+    radial-gradient(circle at 25% 35%, currentColor 0 2px, transparent 3px),
+    radial-gradient(circle at 62% 20%, currentColor 0 2px, transparent 3px),
+    radial-gradient(circle at 72% 68%, currentColor 0 2px, transparent 3px),
+    radial-gradient(circle at 38% 78%, currentColor 0 2px, transparent 3px);
+}
+
+.fieldConstruction[data-field="analysis"]::before {
+  inset: 2rem 0.5rem;
+  border-width: 1px 0 0;
+  border-radius: 50%;
+  transform: rotate(-12deg) skewY(28deg);
+}
+
+.fieldConstruction[data-field="analysis"]::after {
+  inset: 0.5rem 3.9rem;
+  border-width: 0 0 0 1px;
+}
+
+.fieldNode:hover .fieldConstruction,
+.fieldNode:focus-visible .fieldConstruction {
+  opacity: 0.38;
+  transform: scale(1) rotate(0);
+}
+
+.fieldName {
+  font-size: clamp(1.35rem, 2.5vw, 2.4rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.fieldNameZh,
+.fieldCount {
+  color: rgba(18, 21, 16, 0.62);
+}
+
+.editorialGrid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--gallery-line-light);
+  border-top: 1px solid var(--gallery-line-light);
+  border-bottom: 1px solid var(--gallery-line-light);
+}
+
+.leadItem {
+  grid-column: span 8;
+  min-height: 36rem;
+  background: var(--archive-paper);
+}
+
+.storyItem {
+  grid-column: span 4;
+  min-height: 36rem;
+  background: var(--archive-paper);
+}
+
+.supportingItem {
+  grid-column: span 4;
+  min-height: 24rem;
+  background: var(--archive-paper);
+}
+
+.editorialLink {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+}
+
+.editorialVisual {
+  flex: 1;
+  min-height: 16rem;
+  overflow: hidden;
+}
+
+.editorialArtwork {
+  width: 100%;
+  height: 100%;
+}
+
+.editorialCopy {
+  padding: 1.5rem;
+}
+
+.editorialCopy h3 {
+  margin: 1.25rem 0 0.75rem;
+  font-size: clamp(1.5rem, 3vw, 2.75rem);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+}
+
+.editorialCopy p {
+  margin: 0;
+  color: rgba(18, 21, 16, 0.66);
+  line-height: 1.6;
+}
+
+.editorialAuthor {
+  display: block;
+  margin-top: 1.25rem;
+  color: rgba(18, 21, 16, 0.62);
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 900px) {
+  .exhibitionIndex {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .indexEntry:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .sectionHeading {
+    grid-template-columns: 1fr;
+  }
+
+  .leadItem {
+    grid-column: span 12;
+  }
+
+  .storyItem,
+  .supportingItem {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 640px) {
+  .heroCopy {
+    min-height: 82svh;
+    padding: 7rem 1rem 1.5rem;
+  }
+
+  .galleryHero {
+    min-height: 82svh;
+  }
+
+  .exhibitionIndex {
+    grid-template-columns: 1fr;
+  }
+
+  .indexEntry,
+  .indexEntry:first-child {
+    grid-column: auto;
+    min-height: 7.5rem;
+    padding: 1.25rem 1rem;
+  }
+
+  .fieldSection,
+  .communitySection {
+    padding: 5rem 1rem;
+  }
+
+  .fieldMap {
+    min-height: 34rem;
+  }
+
+  .fieldLines {
+    opacity: 0.55;
+  }
+
+  .fieldNode1 {
+    left: 0;
+    top: 4%;
+  }
+
+  .fieldNode2 {
+    left: 38%;
+    top: 23%;
+  }
+
+  .fieldNode3 {
+    left: 5%;
+    top: 43%;
+  }
+
+  .fieldNode4 {
+    right: 0;
+    top: 64%;
+  }
+
+  .fieldNode5 {
+    left: 18%;
+    top: 83%;
+  }
+
+  .leadItem,
+  .storyItem,
+  .supportingItem {
+    grid-column: span 12;
+    min-height: auto;
+  }
+
+  .leadItem {
+    order: 1;
+  }
+
+  .storyItem {
+    order: 2;
+  }
+
+  .supportingItem {
+    order: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fieldConstruction {
+    transition: none;
+  }
+}
