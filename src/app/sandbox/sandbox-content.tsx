@@ -126,7 +126,12 @@ export function SandboxContent({
         setRenderStatus("done");
       }
     } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") return;
+      if (
+        typeof err === "object" &&
+        err !== null &&
+        "name" in err &&
+        err.name === "AbortError"
+      ) return;
       setRenderError(
         "无法连接到本地渲染器。请确保 Python 渲染器正在运行 (localhost:9876)",
       );
