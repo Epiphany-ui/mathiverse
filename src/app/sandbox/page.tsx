@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
 import { ChatPanel } from "@/components/sandbox/chat-panel";
@@ -8,6 +9,7 @@ import { CodeEditor } from "@/components/sandbox/code-editor";
 import { PublishDialog } from "@/components/sandbox/publish-dialog";
 import { Button } from "@/components/ui/button";
 import { useChat } from "@/hooks/use-chat";
+import { createClient } from "@/lib/supabase/client";
 import {
   Code2,
   Play,
@@ -35,7 +37,10 @@ class FirstScene(Scene):
 `;
 
 export default function SandboxPage() {
+  const searchParams = useSearchParams();
+  const forkId = searchParams.get("fork");
   const [code, setCode] = useState(DEFAULT_CODE);
+  const [forkedFrom, setForkedFrom] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<
     "idle" | "rendering" | "done" | "error"
   >("idle");
@@ -43,6 +48,25 @@ export default function SandboxPage() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Load forked visualization source code
+  useEffect(() => {
+    if (!forkId) return;
+    const loadFork = async () => {
+      const supabase = createClient();
+      if (!supabase) return;
+      const { data } = await supabase
+        .from("visualizations")
+        .select("source_code, title")
+        .eq("id", forkId)
+        .single();
+      if (data?.source_code) {
+        setCode(data.source_code);
+        setForkedFrom(forkId);
+      }
+    };
+    loadFork();
+  }, [forkId]);
 
   const handleCodeExtracted = useCallback((newCode: string) => {
     setCode(newCode);
@@ -241,6 +265,7 @@ export default function SandboxPage() {
         open={showPublishDialog}
         code={code}
         videoUrl={videoUrl}
+        forkedFrom={forkedFrom}
         onClose={() => setShowPublishDialog(false)}
       />
     </div>

@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       sourceCode,
       videoUrl = null,
       posterUrl = null,
+      forkedFrom = null,
     } = body;
 
     // Validate required fields
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
         video_url: videoUrl,
         poster_url: posterUrl,
         author_id: user.id,
+        forked_from: forkedFrom,
         is_published: true,
       })
       .select("id")

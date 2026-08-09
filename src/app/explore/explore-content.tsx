@@ -32,8 +32,11 @@ export function ExploreContent() {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     setLoading(true);
-    buildFeedItems(supabase, sort).then((all) => {
+    buildFeedItems(supabase, sort)
+      .then((all) => {
+        if (cancelled) return;
       if (activeTag) {
         const filtered = all
           .filter((item) =>
@@ -49,8 +52,9 @@ export function ExploreContent() {
       } else {
         setItems(all);
       }
-      setLoading(false);
-    });
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [sort, activeTag]);
 
   return (

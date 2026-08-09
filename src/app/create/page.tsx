@@ -39,6 +39,7 @@ export default function CreateArticlePage() {
       setError("请输入文章内容");
       return;
     }
+    if (publishing) return; // prevent double-click
 
     const supabase = createClient();
     if (!supabase) {
