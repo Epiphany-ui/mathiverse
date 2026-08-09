@@ -147,6 +147,70 @@ async function fetchManimGallery(): Promise<RawExample[]> {
   return examples;
 }
 
+// ─── Source 3: Welch Labs videos (high-quality educational Manim scenes) ───
+
+async function fetchWelchLabs(): Promise<RawExample[]> {
+  const examples: RawExample[] = [];
+  const baseUrl =
+    "https://api.github.com/repos/WelchLabs/videos/contents";
+
+  try {
+    const res = await fetch(baseUrl, {
+      headers: {
+        Accept: "application/vnd.github.v3+json",
+        "User-Agent": "mathiverse-seeder",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      console.warn(`[seed] WelchLabs API returned ${res.status} — skipping`);
+      return examples;
+    }
+
+    const items = (await res.json()) as {
+      name: string;
+      type: string;
+      download_url?: string;
+    }[];
+
+    for (const item of items) {
+      if (item.type !== "file" || !item.download_url) continue;
+      if (!item.name.endsWith(".py")) continue;
+
+      try {
+        const codeRes = await fetch(item.download_url, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!codeRes.ok) continue;
+
+        const code = await codeRes.text();
+        if (!code.includes("class ") || !code.includes("Scene")) continue;
+
+        const lines = code.split("\n").length;
+        const difficulty = lines < 50 ? 1 : lines < 80 ? 2 : 3;
+        const className =
+          code.match(/class\s+(\w+)\s*\(/)?.[1] ?? item.name.replace(".py", "");
+
+        examples.push({
+          title: className,
+          description: `Welch Labs: ${className}`,
+          code,
+          tags: extractTagsFromCode(code),
+          difficulty,
+          source: "welch-labs",
+        });
+      } catch {
+        // Skip individual file errors
+      }
+    }
+  } catch (err) {
+    console.warn("[seed] Failed to fetch WelchLabs:", err);
+  }
+
+  return examples;
+}
+
 // ─── Main ───
 
 async function main() {
@@ -159,21 +223,38 @@ async function main() {
     process.exit(1);
   }
 
-  const existing = await countExamples();
-  if (existing > 0) {
-    console.log(
-      `[seed] ${existing} examples already exist. Delete rows to re-seed.`,
-    );
-    process.exit(0);
+  const forceReSeed = process.argv.includes("--force");
+
+  if (!forceReSeed) {
+    const existing = await countExamples();
+    if (existing > 0) {
+      console.log(
+        `[seed] ${existing} examples already exist. Use --force to re-seed (deletes all).`,
+      );
+      process.exit(0);
+    }
+  } else {
+    console.log("[seed] Force mode: deleting existing examples...");
+    try {
+      const { getAdminClient } = await import("../src/lib/supabase/admin");
+      const client = getAdminClient();
+      if (client) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (client as any).from("manim_examples").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      }
+    } catch {
+      console.warn("[seed] Could not delete existing examples — continuing anyway");
+    }
   }
 
   console.log("[seed] Collecting examples...");
   const existingExamples = extractExistingExamples();
   const galleryExamples = await fetchManimGallery();
-  const allExamples = [...existingExamples, ...galleryExamples];
+  const welchExamples = await fetchWelchLabs();
+  const allExamples = [...existingExamples, ...galleryExamples, ...welchExamples];
 
   console.log(
-    `[seed] Got ${existingExamples.length} existing + ${galleryExamples.length} gallery = ${allExamples.length} total`,
+    `[seed] Got ${existingExamples.length} existing + ${galleryExamples.length} gallery + ${welchExamples.length} WelchLabs = ${allExamples.length} total`,
   );
 
   let inserted = 0;

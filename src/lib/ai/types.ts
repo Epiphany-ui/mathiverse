@@ -7,6 +7,7 @@ export interface ManimExample {
   code: string;
   tags: string[];
   difficulty: number;
+  source?: string;
   similarity?: number;
 }
 

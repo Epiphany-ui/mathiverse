@@ -86,6 +86,66 @@ export async function insertExample(
 }
 
 /**
+ * Try to auto-index a successfully published visualization.
+ * Fire-and-forget — never throws, never blocks the caller.
+ * Returns the new row id, or null if indexing wasn't possible.
+ */
+export async function tryAutoIndex(params: {
+  code: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+}): Promise<string | null> {
+  try {
+    // Only index if we have meaningful code
+    if (!params.code || params.code.length < 50) return null;
+    if (!params.code.includes("class ") || !params.code.includes("Scene")) return null;
+
+    const tags = params.tags?.length
+      ? params.tags
+      : extractBasicTags(params.code);
+
+    return await insertExample({
+      title: params.title,
+      description: params.description ?? params.title,
+      code: params.code,
+      tags,
+      difficulty: estimateDifficulty(params.code),
+      source: "user-published",
+    });
+  } catch {
+    // Silently skip — indexing is best-effort
+    return null;
+  }
+}
+
+/** Crude tag extraction from code patterns (no dependency on seed script). */
+function extractBasicTags(code: string): string[] {
+  const tags: string[] = [];
+  const patterns: [RegExp, string][] = [
+    [/ThreeDScene/, "3D"],
+    [/Axes|NumberPlane|ComplexPlane/, "坐标系"],
+    [/MathTex|Tex/, "公式"],
+    [/Transform|Morph/, "变换"],
+    [/ValueTracker/, "参数动画"],
+    [/TracedPath/, "轨迹"],
+    [/np\.random|BarChart/, "统计"],
+    [/np\.sin|np\.cos|Fourier/, "三角函数"],
+    [/Circle|Square|Polygon|Dot/, "几何"],
+    [/np\.linalg|Matrix|vector/, "线性代数"],
+  ];
+  for (const [re, tag] of patterns) {
+    if (re.test(code)) tags.push(tag);
+  }
+  return [...new Set(tags)];
+}
+
+function estimateDifficulty(code: string): number {
+  const lines = code.split("\n").length;
+  return lines < 50 ? 1 : lines < 80 ? 2 : 3;
+}
+
+/**
  * Count examples in the store. Returns -1 on error.
  */
 export async function countExamples(): Promise<number> {
