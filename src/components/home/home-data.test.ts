@@ -3,7 +3,11 @@ import test from "node:test";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
 import type { FeedItem } from "../../types/index.ts";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
-import { selectGalleryFeature } from "./home-data.ts";
+import {
+  buildEditorialSlots,
+  buildFieldLinks,
+  selectGalleryFeature,
+} from "./home-data.ts";
 
 function makeItem(
   id: string,
@@ -54,4 +58,66 @@ test("selectGalleryFeature returns null without visualizations", () => {
   const items = [makeItem("article", "article")];
 
   assert.equal(selectGalleryFeature(items), null);
+});
+
+test("buildEditorialSlots excludes the hero and never duplicates content", () => {
+  const feature = makeItem("hero", "visualization", {
+    videoUrl: "/hero.mp4",
+  });
+  const lead = makeItem("lead", "visualization");
+  const story = makeItem("story", "article");
+  const supportA = makeItem("support-a", "visualization");
+  const supportB = makeItem("support-b", "article");
+
+  const slots = buildEditorialSlots(
+    [feature, lead, story, supportA, supportB],
+    feature,
+  );
+  const ids = [
+    slots.lead?.id,
+    slots.story?.id,
+    ...slots.supporting.map((item) => item.id),
+  ].filter(Boolean);
+
+  assert.equal(slots.lead?.id, "lead");
+  assert.equal(slots.story?.id, "story");
+  assert.deepEqual(slots.supporting.map((item) => item.id), [
+    "support-a",
+    "support-b",
+  ]);
+  assert.equal(ids.includes("hero"), false);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+test("buildEditorialSlots handles sparse content without fabrication", () => {
+  const onlyArticle = makeItem("story", "article");
+
+  assert.deepEqual(buildEditorialSlots([onlyArticle], null), {
+    lead: onlyArticle,
+    story: null,
+    supporting: [],
+  });
+  assert.deepEqual(buildEditorialSlots([], null), {
+    lead: null,
+    story: null,
+    supporting: [],
+  });
+});
+
+test("buildFieldLinks returns stable encoded Explore links and real counts", () => {
+  const items = [
+    makeItem("geometry", "visualization", { tags: ["几何", "拓扑"] }),
+    makeItem("calculus", "visualization", { tags: ["导数", "微积分"] }),
+    makeItem("fourier", "article", { tags: ["傅里叶变换", "信号处理"] }),
+  ];
+
+  const links = buildFieldLinks(items);
+  const geometry = links.find((link) => link.id === "geometry");
+  const calculus = links.find((link) => link.id === "calculus");
+
+  assert.equal(links.length, 5);
+  assert.equal(geometry?.href, "/explore?tag=%E5%87%A0%E4%BD%95");
+  assert.equal(geometry?.count, 1);
+  assert.equal(calculus?.href, "/explore?tag=%E5%BE%AE%E7%A7%AF%E5%88%86");
+  assert.equal(calculus?.count, 1);
 });
