@@ -3,6 +3,8 @@ import test from "node:test";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
 import type { FeedItem } from "../../types/index.ts";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
+import { galleryMediaReducer } from "./gallery-media-state.ts";
+// @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
 import { buildEditorialSlots, buildFieldLinks, buildSandboxHref, isGalleryHeaderScrolled, selectGalleryFeature } from "./home-data.ts";
 
 function makeItem(
@@ -134,4 +136,31 @@ test("buildSandboxHref trims and encodes a mathematical prompt", () => {
 
 test("buildSandboxHref rejects an empty prompt", () => {
   assert.equal(buildSandboxHref("   "), null);
+});
+
+test("gallery media failures always transition to the SVG fallback", () => {
+  for (const state of ["checking", "video", "paused"] as const) {
+    assert.equal(
+      galleryMediaReducer(state, { type: "failed" }),
+      "fallback",
+    );
+  }
+});
+
+test("a new media source resets the fallback to checking", () => {
+  assert.equal(
+    galleryMediaReducer("fallback", { type: "source-changed" }),
+    "checking",
+  );
+});
+
+test("late playback events cannot escape the fallback", () => {
+  assert.equal(
+    galleryMediaReducer("fallback", { type: "played" }),
+    "fallback",
+  );
+  assert.equal(
+    galleryMediaReducer("fallback", { type: "paused" }),
+    "fallback",
+  );
 });
