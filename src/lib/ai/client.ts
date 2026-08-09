@@ -10,11 +10,19 @@ export interface AIMessage {
   content: string;
 }
 
+export const MODELS = {
+  /** Primary model for Manim code generation — stronger reasoning */
+  code: "deepseek-v4-pro",
+  /** Lighter model for metadata generation */
+  metadata: "deepseek-v4-flash",
+} as const;
+
 export interface ChatCompletionRequest {
   messages: AIMessage[];
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
+  model?: string;
 }
 
 export interface ChatCompletionChunk {
@@ -60,11 +68,11 @@ export async function chatCompletion(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
-      model: "deepseek-chat",
+      model: request.model ?? MODELS.code,
       messages: request.messages,
       stream: false,
-      temperature: request.temperature ?? 0.3,
-      max_tokens: request.max_tokens ?? 4096,
+      temperature: request.temperature ?? 0.4,
+      max_tokens: request.max_tokens ?? 8192,
     }),
   });
 
@@ -97,11 +105,11 @@ export async function chatCompletionStream(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
-      model: "deepseek-chat",
+      model: request.model ?? MODELS.code,
       messages: request.messages,
       stream: true,
-      temperature: request.temperature ?? 0.3,
-      max_tokens: request.max_tokens ?? 4096,
+      temperature: request.temperature ?? 0.4,
+      max_tokens: request.max_tokens ?? 8192,
     }),
   });
 
