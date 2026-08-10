@@ -174,8 +174,14 @@ export async function getConnectedEntries(
   client: any,
   entryId: string,
 ): Promise<{ entries: WikiEntry[]; edges: WikiEdge[]; allIds: Set<string> }> {
-  // First hop: direct edges
+  // First hop: direct edges from wiki_edges table
   const directEdges = await getEdgesForEntry(client, entryId);
+
+  // Fallback: if no edges exist, generate from shared tags
+  if (directEdges.length === 0) {
+    return getTagBasedConnections(client, entryId);
+  }
+
   const directIds = directEdges.map((e) =>
     e.sourceId === entryId ? e.targetId : e.sourceId,
   );
@@ -195,8 +201,49 @@ export async function getConnectedEntries(
     allIds.add(e.targetId);
   }
 
-  // Fetch all entries
   const entries = await getWikiEntriesByIds(client, [...allIds]);
 
   return { entries, edges: allEdges, allIds };
+}
+
+/** Fallback: build edges from tag overlap when wiki_edges is empty. */
+async function getTagBasedConnections(
+  client: any,
+  entryId: string,
+): Promise<{ entries: WikiEntry[]; edges: WikiEdge[]; allIds: Set<string> }> {
+  const current = await getWikiEntryById(client, entryId);
+  if (!current) return { entries: [], edges: [], allIds: new Set() };
+
+  const allEntries = await getAllWikiEntries(client);
+  const currentTags = new Set(current.tags ?? []);
+
+  const edges: WikiEdge[] = [];
+  const connectedIds = new Set<string>();
+  connectedIds.add(entryId);
+
+  for (const entry of allEntries) {
+    if (entry.id === entryId) continue;
+    const overlap = (entry.tags ?? []).filter((t) => currentTags.has(t));
+    if (overlap.length > 0) {
+      const strength = Math.min(0.9, 0.3 + overlap.length * 0.2);
+      edges.push({
+        id: `tag-${entryId}-${entry.id}`,
+        sourceId: entryId,
+        targetId: entry.id,
+        label: overlap.slice(0, 2).join("、"),
+        strength,
+      });
+      edges.push({
+        id: `tag-${entry.id}-${entryId}`,
+        sourceId: entry.id,
+        targetId: entryId,
+        label: overlap.slice(0, 2).join("、"),
+        strength,
+      });
+      connectedIds.add(entry.id);
+    }
+  }
+
+  const entries = allEntries.filter((e) => connectedIds.has(e.id));
+  return { entries, edges, allIds: connectedIds };
 }
