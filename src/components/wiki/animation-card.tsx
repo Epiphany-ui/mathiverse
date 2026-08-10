@@ -54,6 +54,8 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
     if (cardState !== "generating") return;
 
     const run = async () => {
+      // Reset cancellation flag on each effect run (React Strict Mode compat)
+      cancelledRef.current = false;
       try {
         // Stage 1-3: AI code generation
         advanceStage("understanding");
@@ -156,7 +158,6 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
   };
 
   const handleRetry = () => {
-    cancelledRef.current = false;
     setCardState("generating");
     setStage("understanding");
     setStageIndex(0);
