@@ -36,17 +36,22 @@ export function TextSelectionTooltip({
         return;
       }
 
-      // Exclude selections inside code/pre elements
       const range = sel.getRangeAt(0);
       const ancestor = range.commonAncestorContainer;
       const container = ancestor instanceof Element ? ancestor : ancestor.parentElement;
-      if (container?.closest("pre, code")) {
+
+      // Only show inside the article body container
+      if (!container || !containerRef.current?.contains(container)) {
         setVisible(false);
         return;
       }
 
-      // Don't show inside the mini-sandbox panel
-      if (container?.closest("[data-mini-sandbox]")) {
+      if (container.closest("pre, code")) {
+        setVisible(false);
+        return;
+      }
+
+      if (container.closest("[data-mini-sandbox]")) {
         setVisible(false);
         return;
       }
