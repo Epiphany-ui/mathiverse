@@ -74,8 +74,11 @@ export function SandboxContent({
     loadFork();
   }, [forkId]);
 
-  // Load code passed from wiki animation cards via localStorage
+  // Load code passed from wiki animation cards via localStorage (once)
+  const autoSentRef = useRef(false);
   useEffect(() => {
+    if (forkId || initialPrompt) return; // Don't override fork or homepage prompt
+    if (autoSentRef.current) return;
     try {
       const storedCode = localStorage.getItem("sandbox_code");
       const storedPrompt = localStorage.getItem("sandbox_prompt");
@@ -83,18 +86,17 @@ export function SandboxContent({
         setCode(storedCode);
         localStorage.removeItem("sandbox_code");
       }
-      if (storedPrompt) {
+      if (storedPrompt && storedCode) {
         localStorage.removeItem("sandbox_prompt");
-        // Auto-send the prompt if code was loaded from a card
-        if (storedCode && storedPrompt) {
-          const timer = setTimeout(() => {
-            sendMessage(storedPrompt, storedCode, false);
-          }, 500);
-          return () => clearTimeout(timer);
-        }
+        autoSentRef.current = true;
+        // Delay to let ChatPanel mount and initialize
+        const timer = setTimeout(() => {
+          sendMessage(storedPrompt, storedCode, false);
+        }, 800);
+        return () => clearTimeout(timer);
       }
     } catch {}
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [forkId, initialPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCodeExtracted = useCallback((newCode: string) => {
     setCode(newCode);
@@ -170,12 +172,12 @@ export function SandboxContent({
   };
 
   return (
-    <div className="h-dvh flex flex-col relative overflow-hidden">
+    <div className="min-h-screen flex flex-col relative">
       <ParticlesBackground />
       <AppHeader />
       <main className="flex-1 flex pt-16 z-10 min-h-0">
         {/* Left: Chat Panel */}
-        <aside className="w-[380px] shrink-0 border-r border-border/50 h-[calc(100dvh-4rem)]">
+        <aside className="w-[380px] shrink-0 border-r border-border/50 h-[calc(100vh-4rem)]">
           <ChatPanel
             messages={messages}
             isLoading={isLoading}
@@ -188,7 +190,7 @@ export function SandboxContent({
         </aside>
 
         {/* Right: Code Editor + Toolbar + Video Preview */}
-        <div className="flex-1 flex flex-col h-[calc(100dvh-4rem)] min-w-0 min-h-0">
+        <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] min-w-0 min-h-0">
           {/* Toolbar */}
           <div className="h-12 border-b border-border/50 flex items-center px-4 gap-3 shrink-0">
             <Code2 className="w-4 h-4 text-muted-foreground" />

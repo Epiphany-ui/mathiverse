@@ -119,12 +119,19 @@ export function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom — instant during streaming, smooth on new messages
+  // Auto-scroll when a new message appears (not on every streaming token)
+  const msgCountRef = useRef(messages.length);
   useEffect(() => {
     const el = bottomRef.current;
     if (!el) return;
-    // Use instant scroll during streaming to avoid smooth-scroll stacking
-    el.scrollIntoView({ behavior: isLoading ? "auto" : "smooth" });
+    // Only scroll when the message count changes (new message), not per-token updates
+    if (messages.length !== msgCountRef.current) {
+      msgCountRef.current = messages.length;
+      el.scrollIntoView({ behavior: "smooth" });
+    } else if (isLoading) {
+      // During streaming, keep the last message visible with instant scroll
+      el.scrollIntoView({ behavior: "auto" });
+    }
   }, [messages, isLoading]);
 
   // Focus input on mount
