@@ -97,10 +97,8 @@ export function LikeButton({
       // Revert on error
       setIsLiked(wasLiked);
       setLocalCount((c) => c + (wasLiked ? 1 : -1));
-    } else {
-      // Update server count tracker so future syncs use the correct baseline
-      lastServerCount.current = wasLiked ? count - 1 : count + 1;
     }
+    // Don't touch lastServerCount — let the effect detect genuine server changes only
 
     inFlightRef.current = false;
   }, [isLiked, count, targetType, targetId]);
