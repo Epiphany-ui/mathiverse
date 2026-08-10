@@ -4,7 +4,6 @@ import { useRef, useState, useCallback } from "react";
 import { MarkdownRenderer } from "@/components/content/markdown-renderer";
 import { TextSelectionTooltip } from "./text-selection-tooltip";
 import { AnimationCard } from "./animation-card";
-import { MiniSandbox } from "./mini-sandbox";
 
 interface WikiBodyProps {
   slug: string;
@@ -20,10 +19,6 @@ interface CardInstance {
 export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [cards, setCards] = useState<CardInstance[]>([]);
-  const [sandbox, setSandbox] = useState<{
-    open: boolean;
-    prompt: string;
-  } | null>(null);
 
   const addCard = useCallback((card: CardInstance) => {
     setCards((prev) => [...prev, card]);
@@ -39,7 +34,7 @@ export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
         <MarkdownRenderer content={bodyMd} />
       </div>
 
-      {/* Inline animation cards — stack below article body */}
+      {/* Inline animation cards */}
       {cards.length > 0 && (
         <div className="space-y-4 mt-6">
           {cards.map((card) => (
@@ -64,15 +59,6 @@ export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
           const prompt = `为"${title}"中的概念生成 Manim 动画：\n"${text}"`;
           addCard({ id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, prompt });
         }}
-      />
-
-      {/* Sandbox — only opens on explicit user action from cards */}
-      <MiniSandbox
-        open={sandbox?.open ?? false}
-        initialPrompt={sandbox?.prompt ?? ""}
-        wikiTitle={title}
-        wikiSlug={slug}
-        onClose={() => setSandbox(null)}
       />
     </>
   );
