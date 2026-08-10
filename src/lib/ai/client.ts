@@ -54,7 +54,7 @@ function buildRequestBody(
     model: request.model ?? MODELS.code,
     messages: request.messages,
     stream,
-    max_tokens: request.max_tokens ?? 8192,
+    max_tokens: request.max_tokens ?? 32768,
   };
 
   // Only include temperature when thinking is disabled (it's ignored otherwise)

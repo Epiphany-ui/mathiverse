@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       messages: fullMessages,
       model: MODELS.code,
       reasoning_effort: isNewCode ? "max" : "high",
-      max_tokens: 8192,
+      max_tokens: 32768,
     });
 
     return new Response(stream, {
