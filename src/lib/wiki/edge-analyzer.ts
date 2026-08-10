@@ -51,6 +51,8 @@ export async function analyzeEdges(
     for (const result of batchResults) {
       if (result.status === "fulfilled") {
         edges.push(...result.value);
+      } else {
+        console.warn(`[edge-analyzer] Rejected: ${result.reason?.message ?? result.reason}`);
       }
     }
   }
@@ -78,7 +80,11 @@ async function analyzePair(
     });
 
     const parsed = parseAnalysisResponse(response);
-    if (!parsed?.hasRelation) return [];
+    if (!parsed) {
+      console.warn(`[edge-analyzer] Parse failed for ${entryA.title} ↔ ${entryB.title}: ${response.slice(0, 100)}`);
+      return [];
+    }
+    if (!parsed.hasRelation) return [];
 
     const edges: EdgeResult[] = [];
     if (parsed.strength >= 0.3) {

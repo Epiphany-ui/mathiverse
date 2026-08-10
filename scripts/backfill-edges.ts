@@ -25,10 +25,11 @@ function loadEnvLocal() {
 loadEnvLocal();
 
 import { createClient } from "@supabase/supabase-js";
-import { analyzeEdges } from "../src/lib/wiki/edge-analyzer";
 import type { WikiEntry } from "../src/types";
 
 async function main() {
+  // Dynamic import ensures env vars are loaded before module evaluation
+  const { analyzeEdges } = await import("../src/lib/wiki/edge-analyzer");
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
