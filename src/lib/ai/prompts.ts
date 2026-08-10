@@ -810,6 +810,7 @@ export async function generateMetadata(
         },
       ],
       model: MODELS.metadata,
+      thinking: { type: "disabled" }, // No reasoning needed for JSON extraction
       temperature: 0.5,
       max_tokens: 300,
     });
