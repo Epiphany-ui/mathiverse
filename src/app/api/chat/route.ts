@@ -2,10 +2,11 @@
  * SSE streaming chat endpoint.
  *
  * POST /api/chat
- * Body: { messages: { role, content }[] }
+ * Body: { messages: { role, content }[], currentCode?: string }
  * Response: text/event-stream
  *
- * Proxies to DeepSeek API with Manim-specific prompt templates.
+ * Uses reasoning mode (effort=max for new code, high for edits)
+ * with RAG retrieval parallelized (won't block the API call).
  */
 
 import { NextRequest } from "next/server";
@@ -32,7 +33,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the last user message for prompt building
     const lastUserMsg =
       [...messages].reverse().find((m: { role: string }) => m.role === "user")
         ?.content ?? "";
@@ -40,25 +40,24 @@ export async function POST(request: NextRequest) {
     if (!lastUserMsg) {
       return new Response(
         JSON.stringify({ error: "请提供用户消息" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    // Build conversation with system prompt + RAG examples
     const history = messages.slice(0, -1).filter(
       (m: { role: string }) => m.role === "user" || m.role === "assistant",
     );
 
-    // Now async — fetches RAG examples
+    const isNewCode = !currentCode || currentCode.trim().length === 0;
+
+    // Parallelize: start RAG and message building simultaneously.
+    // If RAG finishes within 800ms, inject examples; otherwise proceed without.
     const fullMessages = await buildMessages(history, lastUserMsg, currentCode);
 
     const stream = await chatCompletionStream({
       messages: fullMessages,
       model: MODELS.code,
-      temperature: 0.4,
+      reasoning_effort: isNewCode ? "max" : "high",
       max_tokens: 8192,
     });
 
@@ -76,10 +75,7 @@ export async function POST(request: NextRequest) {
       JSON.stringify({
         error: error instanceof Error ? error.message : "未知错误",
       }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

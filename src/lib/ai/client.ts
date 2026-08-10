@@ -23,6 +23,10 @@ export interface ChatCompletionRequest {
   temperature?: number;
   max_tokens?: number;
   model?: string;
+  /** Enable/disable internal reasoning. Default: enabled on v4 models. */
+  thinking?: { type: "enabled" | "disabled" };
+  /** Reasoning depth — only meaningful when thinking is enabled. */
+  reasoning_effort?: "low" | "high" | "max";
 }
 
 export interface ChatCompletionChunk {
@@ -32,6 +36,7 @@ export interface ChatCompletionChunk {
     delta: {
       role?: string;
       content?: string;
+      reasoning_content?: string;
     };
     finish_reason: string | null;
   }[];
@@ -40,6 +45,33 @@ export interface ChatCompletionChunk {
 const API_KEY = process.env.DEEPSEEK_API_KEY ?? "";
 const BASE_URL =
   process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
+
+function buildRequestBody(
+  request: ChatCompletionRequest,
+  stream: boolean,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: request.model ?? MODELS.code,
+    messages: request.messages,
+    stream,
+    max_tokens: request.max_tokens ?? 8192,
+  };
+
+  // Only include temperature when thinking is disabled (it's ignored otherwise)
+  if (request.thinking?.type === "disabled") {
+    body.temperature = request.temperature ?? 0.4;
+  }
+
+  // Thinking / reasoning control
+  if (request.thinking) {
+    body.thinking = request.thinking;
+  }
+  if (request.reasoning_effort) {
+    body.reasoning_effort = request.reasoning_effort;
+  }
+
+  return body;
+}
 
 export function isConfigured(): boolean {
   return (
@@ -67,13 +99,7 @@ export async function chatCompletion(
       "Content-Type": "application/json",
       Authorization: `Bearer ${API_KEY}`,
     },
-    body: JSON.stringify({
-      model: request.model ?? MODELS.code,
-      messages: request.messages,
-      stream: false,
-      temperature: request.temperature ?? 0.4,
-      max_tokens: request.max_tokens ?? 8192,
-    }),
+    body: JSON.stringify(buildRequestBody(request, false)),
   });
 
   if (!res.ok) {
@@ -104,13 +130,7 @@ export async function chatCompletionStream(
       "Content-Type": "application/json",
       Authorization: `Bearer ${API_KEY}`,
     },
-    body: JSON.stringify({
-      model: request.model ?? MODELS.code,
-      messages: request.messages,
-      stream: true,
-      temperature: request.temperature ?? 0.4,
-      max_tokens: request.max_tokens ?? 8192,
-    }),
+    body: JSON.stringify(buildRequestBody(request, true)),
   });
 
   if (!res.ok) {
@@ -147,7 +167,9 @@ export async function chatCompletionStream(
 
             try {
               const parsed: ChatCompletionChunk = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
+              const delta = parsed.choices?.[0]?.delta;
+              // Skip reasoning_content — only forward final content to client
+              const content = delta?.content;
               if (content) {
                 // Send as SSE to the client
                 controller.enqueue(
