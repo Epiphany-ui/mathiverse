@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Sparkles } from "lucide-react";
 
 interface SelectionEvent {
@@ -95,7 +96,7 @@ export function TextSelectionTooltip({
 
   if (!visible) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed z-[60] pointer-events-auto animate-in fade-in slide-in-from-bottom-1 duration-150"
       style={{
@@ -117,6 +118,7 @@ export function TextSelectionTooltip({
         </span>
         <span className="text-[#cc785c] font-medium">生成动画</span>
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }
