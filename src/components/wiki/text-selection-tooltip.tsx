@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, type RefObject } from "react";
+import { useEffect, useState, useCallback, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Sparkles } from "lucide-react";
 
 interface SelectionEvent {
   text: string;
+  /** The DOM node right after the selection — for inline card placement */
+  anchor: Node | null;
 }
 
 interface TextSelectionTooltipProps {
@@ -20,6 +22,7 @@ export function TextSelectionTooltip({
   const [visible, setVisible] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [text, setText] = useState("");
+  const anchorRef = useRef<Node | null>(null);
 
   const handleSelection = useCallback(() => {
     // Throttle with rAF
@@ -70,6 +73,9 @@ export function TextSelectionTooltip({
       // Clamp top — never go above viewport
       if (y < 8) y = 8;
 
+      // Capture anchor node for inline card placement
+      anchorRef.current = range.endContainer;
+
       setText(selectedText.slice(0, 40));
       setPos({ x, y });
       setVisible(true);
@@ -95,7 +101,7 @@ export function TextSelectionTooltip({
 
   const handleClick = () => {
     setVisible(false);
-    onAnimate({ text });
+    onAnimate({ text, anchor: anchorRef.current });
     window.getSelection()?.removeAllRanges();
   };
 

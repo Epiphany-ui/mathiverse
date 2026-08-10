@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ import {
 } from "@/lib/db/interactions";
 
 interface LikeButtonProps {
-  targetType: "visualization" | "article" | "comment";
+  targetType: "visualization" | "article" | "comment" | "wiki";
   targetId: string;
   count: number;
   className?: string;
@@ -25,45 +25,64 @@ export function LikeButton({
   className,
 }: LikeButtonProps) {
   const [isLiked, setIsLiked] = useState(false);
+  const [localCount, setLocalCount] = useState(count);
   const [animating, setAnimating] = useState(false);
   const [burst, setBurst] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
+  const lastServerCount = useRef(count);
+  const initDoneRef = useRef(false);
+
+  // Sync localCount only when server count genuinely changes (not after our own mutations)
+  useEffect(() => {
+    if (count !== lastServerCount.current) {
+      lastServerCount.current = count;
+      if (!inFlightRef.current) {
+        setLocalCount(count);
+      }
+    }
+  }, [count]);
 
   // Check auth and like state on mount
   useEffect(() => {
+    let cancelled = false;
     const init = async () => {
       const supabase = createClient();
       if (!supabase) return;
 
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || cancelled) return;
 
       setUserId(user.id);
       const liked = await getLikeState(supabase, user.id, targetType, targetId);
-      setIsLiked(liked);
+      if (!cancelled) {
+        setIsLiked(liked);
+        initDoneRef.current = true;
+      }
     };
     init();
+    return () => { cancelled = true; };
   }, [targetType, targetId]);
 
   const handleClick = useCallback(async () => {
-    const supabase = createClient();
-    if (!supabase) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
 
-    // Check auth
+    const supabase = createClient();
+    if (!supabase) { inFlightRef.current = false; return; }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      inFlightRef.current = false;
       window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
       return;
     }
-
-    if (loading) return;
-    setLoading(true);
 
     const wasLiked = isLiked;
 
     // Optimistic update
     setIsLiked(!wasLiked);
+    setLocalCount((c) => c + (wasLiked ? -1 : 1));
     setAnimating(true);
     if (!wasLiked) setBurst(true);
     setTimeout(() => setAnimating(false), 400);
@@ -77,13 +96,14 @@ export function LikeButton({
     if (result.error) {
       // Revert on error
       setIsLiked(wasLiked);
+      setLocalCount((c) => c + (wasLiked ? 1 : -1));
+    } else {
+      // Update server count tracker so future syncs use the correct baseline
+      lastServerCount.current = wasLiked ? count - 1 : count + 1;
     }
 
-    setLoading(false);
-  }, [isLiked, loading, targetType, targetId]);
-
-  // Calculate display count with optimistic offset
-  const displayCount = count + (isLiked ? 0 : 0); // server count + local
+    inFlightRef.current = false;
+  }, [isLiked, count, targetType, targetId]);
 
   return (
     <Button
@@ -91,9 +111,8 @@ export function LikeButton({
       size="sm"
       className={cn("gap-1.5 group relative btn-press", className)}
       onClick={handleClick}
-      disabled={loading}
+      disabled={inFlightRef.current}
     >
-      {/* Ring burst on like */}
       {burst && (
         <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-heart-ring pointer-events-none" />
       )}
@@ -105,7 +124,7 @@ export function LikeButton({
         )}
       />
       <span className={cn(isLiked && "text-red-500")}>
-        {displayCount}
+        {localCount}
       </span>
     </Button>
   );

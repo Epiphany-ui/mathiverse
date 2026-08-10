@@ -119,10 +119,13 @@ export function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom — instant during streaming, smooth on new messages
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = bottomRef.current;
+    if (!el) return;
+    // Use instant scroll during streaming to avoid smooth-scroll stacking
+    el.scrollIntoView({ behavior: isLoading ? "auto" : "smooth" });
+  }, [messages, isLoading]);
 
   // Focus input on mount
   useEffect(() => {

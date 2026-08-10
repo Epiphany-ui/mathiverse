@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Square, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { Play, Square, ExternalLink, RefreshCw } from "lucide-react";
 
 /* ─── Progress Stages ─── */
 
@@ -157,14 +156,72 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
     onRemove?.();
   };
 
-  const handleRetry = () => {
+  // Auto-fix: send error + code to fix endpoint, then re-render
+  const handleRetry = async () => {
+    if (!generatedCode || !error) {
+      // No code to fix — restart full pipeline
+      setCardState("generating");
+      setStage("understanding");
+      setStageIndex(0);
+      setError("");
+      setVideoUrl(null);
+      setRetryKey((k) => k + 1);
+      return;
+    }
+
+    // Show fix-in-progress state
     setCardState("generating");
-    setStage("understanding");
-    setStageIndex(0);
+    setStage("writing");
+    setStageIndex(2);
     setError("");
-    setVideoUrl(null);
-    setGeneratedCode("");
-    setRetryKey((k) => k + 1);
+
+    try {
+      const fixRes = await fetch("/api/chat/fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: generatedCode, error }),
+      });
+
+      const fixData = await fixRes.json();
+      if (!fixRes.ok) throw new Error(fixData.error ?? "修复失败");
+
+      const fixedCode = fixData.mode === "diff"
+        ? applyChanges(generatedCode, fixData.changes)
+        : (fixData.code ?? generatedCode);
+
+      setGeneratedCode(fixedCode);
+
+      // Re-render with fixed code
+      advanceStage("launching");
+      await sleep(300);
+      advanceStage("rendering");
+
+      const renderRes = await fetch("/api/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: fixedCode, quality: "-ql", format: "mp4" }),
+      });
+
+      const renderData = await renderRes.json();
+      if (!renderRes.ok || renderData.error) {
+        throw new Error(renderData.error ?? "渲染失败");
+      }
+
+      setVideoUrl(renderData.video_url);
+      setCardState("done");
+    } catch (err2) {
+      setError(err2 instanceof Error ? err2.message : "修复失败");
+      setCardState("failed");
+    }
+  };
+
+  // Store code to localStorage so sandbox can pick it up
+  const goToSandbox = () => {
+    if (generatedCode) {
+      try { localStorage.setItem("sandbox_code", generatedCode); } catch {}
+    }
+    try { localStorage.setItem("sandbox_prompt", prompt); } catch {}
+    window.open(`/sandbox?from=wiki`, "_blank");
   };
 
   const togglePause = () => {
@@ -242,13 +299,13 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
               {isPaused ? <Play className="w-3 h-3" /> : <Square className="w-3 h-3" />}
               {isPaused ? "播放" : "暂停"}
             </button>
-            <Link
-              href={sandboxHref}
-              className="flex items-center gap-1 text-xs text-[#cc785c] hover:text-[#a9583e] transition-colors font-medium"
+            <button
+              onClick={goToSandbox}
+              className="flex items-center gap-1 text-xs text-[#cc785c] hover:text-[#a9583e] transition-colors font-medium cursor-pointer"
             >
               <ExternalLink className="w-3 h-3" />
               在沙箱中编辑
-            </Link>
+            </button>
           </div>
         </div>
       )}
@@ -273,13 +330,13 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
               <RefreshCw className="w-3 h-3" />
               重试
             </button>
-            <Link
-              href={`/sandbox?prompt=${encodeURIComponent(prompt + "\n错误: " + error)}`}
+            <button
+              onClick={goToSandbox}
               className="flex items-center gap-1.5 text-xs text-[#6c6a64] hover:text-[#141413] transition-colors cursor-pointer"
             >
               <ExternalLink className="w-3 h-3" />
               在沙箱中修复
-            </Link>
+            </button>
           </div>
         </div>
       )}
@@ -288,3 +345,22 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
 }
 
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+/** Apply incremental diff changes to code. Simple line-based replacement. */
+function applyChanges(code: string, changes: { startLine: number; endLine: number; newCode: string }[]): string {
+  if (!changes?.length) return code;
+  const lines = code.split("\n");
+  // Apply in reverse order so line numbers stay valid
+  const sorted = [...changes].sort((a, b) => b.startLine - a.startLine);
+  for (const ch of sorted) {
+    const start = Math.max(0, ch.startLine - 1);
+    const end = Math.min(lines.length, ch.endLine);
+    const before = lines.slice(0, start);
+    const after = lines.slice(end);
+    const insertLines = ch.newCode.split("\n");
+    const newLines = [...before, ...insertLines, ...after];
+    lines.length = 0;
+    lines.push(...newLines);
+  }
+  return lines.join("\n");
+}
