@@ -218,7 +218,7 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
         abortRef.current = null;
       }
     },
-    [messages, isLoading, onCodeExtracted],
+    [messages, isLoading, onCodeExtracted, onChangesApplied],
   );
 
   const cancelSend = useCallback(() => {
