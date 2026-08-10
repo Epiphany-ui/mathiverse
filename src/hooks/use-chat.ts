@@ -3,11 +3,14 @@
 import { useState, useCallback, useRef } from "react";
 import type { ChatMessage } from "@/types";
 
+import type { CodeChange } from "@/lib/ai/prompts";
+
 interface UseChatOptions {
   onCodeExtracted?: (code: string) => void;
+  onChangesApplied?: (changes: CodeChange[]) => void;
 }
 
-export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
+export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -67,17 +70,36 @@ export function useChat({ onCodeExtracted }: UseChatOptions = {}) {
 
           if (!res.ok) throw new Error(data.error ?? "修复失败");
 
-          const fixedCode = data.code;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: "已根据错误信息修复代码。", code: fixedCode }
-                : m,
-            ),
-          );
+          if (data.mode === "diff" && data.changes?.length) {
+            // V2: incremental diff — apply changes directly to editor
+            const changeDescriptions = data.changes
+              .map((c: CodeChange) => c.reason)
+              .join("; ");
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: `已修复: ${changeDescriptions}` }
+                  : m,
+              ),
+            );
 
-          if (fixedCode && onCodeExtracted) {
-            onCodeExtracted(fixedCode);
+            if (onChangesApplied) {
+              onChangesApplied(data.changes);
+            }
+          } else {
+            // V1 fallback: full code replacement
+            const fixedCode = data.code;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: "已根据错误信息修复代码。", code: fixedCode }
+                  : m,
+              ),
+            );
+
+            if (fixedCode && onCodeExtracted) {
+              onCodeExtracted(fixedCode);
+            }
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : "修复失败";

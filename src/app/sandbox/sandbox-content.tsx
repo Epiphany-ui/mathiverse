@@ -52,6 +52,7 @@ export function SandboxContent({
   const [renderError, setRenderError] = useState("");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [pendingChanges, setPendingChanges] = useState<import("@/lib/ai/prompts").CodeChange[] | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Load forked visualization source code
@@ -78,7 +79,10 @@ export function SandboxContent({
   }, []);
 
   const { messages, isLoading, sendMessage, cancelSend, clearMessages } =
-    useChat({ onCodeExtracted: handleCodeExtracted });
+    useChat({
+      onCodeExtracted: handleCodeExtracted,
+      onChangesApplied: (changes) => setPendingChanges(changes),
+    });
 
   // Wrap sendMessage to always pass current code
   const handleSend = useCallback(
@@ -266,6 +270,8 @@ export function SandboxContent({
               value={code}
               onChange={setCode}
               readOnly={false}
+              applyChanges={pendingChanges}
+              onChangesDone={() => setPendingChanges(null)}
             />
           </div>
         </div>

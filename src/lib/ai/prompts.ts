@@ -841,6 +841,13 @@ export async function generateMetadata(
 
 /* ─── AI Error Fix ─── */
 
+export interface CodeChange {
+  startLine: number;  // 1-indexed, inclusive
+  endLine: number;    // 1-indexed, inclusive
+  reason: string;
+  newCode: string;
+}
+
 const FIX_SYSTEM_PROMPT = `你是 Manim 调试专家。用户渲染代码时遇到了错误。请分析错误信息并修复代码。
 
 ## 规则
@@ -864,8 +871,75 @@ const FIX_SYSTEM_PROMPT = `你是 Manim 调试专家。用户渲染代码时遇�
 请输出修复后的完整代码。`;
 
 /**
- * Build a prompt for AI error fixing.
+ * Build a prompt for AI error fixing (original full-code mode).
  */
 export function buildFixPrompt(code: string, error: string) {
   return FIX_SYSTEM_PROMPT.replace("{code}", code).replace("{error}", error);
+}
+
+/* ─── V2: Incremental Fix (diff-based) ─── */
+
+const FIX_V2_SYSTEM_PROMPT = `你是 Manim 调试专家。分析渲染错误，找出代码中需要修改的具体行。只输出需要改的部分，不输出完整代码。
+
+## 规则
+1. 输出严格的 JSON 对象，不要任何额外文字
+2. 只包含与错误直接相关的修改——不要重写整个场景
+3. startLine/endLine 是行号（1开始），包含起止行
+4. newCode 是替换 startLine 到 endLine 的新代码（保持缩进）
+5. reason 用中文简述为什么这样改
+6. 如果错误很简单（比如缺 import），只改那一行
+
+## 示例输出
+{
+  "changes": [
+    {
+      "startLine": 12,
+      "endLine": 14,
+      "reason": "修复: 坐标转换应使用 axes.c2p 而不是直接 np.array",
+      "newCode": "        point = axes.c2p(x_val, y_val)"
+    }
+  ]
+}
+
+## 当前代码
+{code}
+
+## 渲染错误
+{error}`;
+
+/**
+ * Build a prompt for V2 incremental (diff-based) AI error fixing.
+ */
+export function buildFixPromptV2(code: string, error: string) {
+  return FIX_V2_SYSTEM_PROMPT
+    .replace("{code}", code)
+    .replace("{error}", error);
+}
+
+/**
+ * Parse the AI response into structured changes.
+ * Falls back to null if the response is not valid JSON.
+ */
+export function parseFixResponse(response: string): { changes: CodeChange[] } | null {
+  try {
+    // Try exact JSON first
+    const parsed = JSON.parse(response.trim());
+    if (parsed.changes && Array.isArray(parsed.changes)) {
+      return parsed;
+    }
+  } catch {
+    // Try to extract JSON from within markdown or code fences
+    const jsonMatch = response.match(/\{[\s\S]*"changes"[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.changes && Array.isArray(parsed.changes)) {
+          return parsed;
+        }
+      } catch {
+        // fall through to null
+      }
+    }
+  }
+  return null;
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
+import type { CodeChange } from "@/lib/ai/prompts";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { python } from "@codemirror/lang-python";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
@@ -92,6 +93,10 @@ interface CodeEditorProps {
   onChange?: (value: string) => void;
   readOnly?: boolean;
   autoFocus?: boolean;
+  /** Incremental changes to apply with canvas erase animation. */
+  applyChanges?: CodeChange[] | null;
+  /** Called after all changes have been applied. */
+  onChangesDone?: () => void;
 }
 
 export function CodeEditor({
@@ -99,6 +104,8 @@ export function CodeEditor({
   onChange,
   readOnly = false,
   autoFocus = true,
+  applyChanges,
+  onChangesDone,
 }: CodeEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -243,6 +250,85 @@ export function CodeEditor({
       typewriteCode(view, value);
     }
   }, [value, typewriteCode]);
+
+  // Incremental change application with canvas erase/write animation
+  const applyIncrementalChanges = useCallback(
+    async (view: EditorView, changes: CodeChange[]) => {
+      const overlay = canvasOverlayRef.current;
+
+      // Process changes in order
+      for (let i = 0; i < changes.length; i++) {
+        const ch = changes[i];
+        // Read doc fresh each iteration — it changes after each dispatch
+        const doc = view.state.doc;
+        const line = doc.line(Math.min(ch.startLine, doc.lines));
+        const endLine = doc.line(Math.min(ch.endLine, doc.lines));
+
+        const from = line.from;
+        const to = endLine.to;
+
+        // Phase 1: Erase glow (red flash)
+        if (overlay) {
+          overlay.style.transition = "none";
+          overlay.style.opacity = "0.5";
+          overlay.style.boxShadow =
+            "inset 0 0 120px rgba(220, 80, 60, 0.4), inset 0 0 40px rgba(220, 80, 60, 0.2)";
+        }
+        await new Promise((r) => setTimeout(r, 200));
+
+        // Phase 2: Replace text
+        view.dispatch({
+          changes: { from, to, insert: ch.newCode },
+          // Scroll changed area into view
+          effects: EditorView.scrollIntoView(from, { y: "center" }),
+        });
+
+        // Phase 3: Write glow (green flash)
+        if (overlay) {
+          overlay.style.transition = "none";
+          overlay.style.opacity = "0.4";
+          overlay.style.boxShadow =
+            "inset 0 0 120px rgba(93, 184, 166, 0.3), inset 0 0 40px rgba(93, 184, 166, 0.15)";
+        }
+        await new Promise((r) => setTimeout(r, 150));
+
+        // Fade out
+        if (overlay) {
+          overlay.style.transition = "opacity 1.5s ease-out";
+          overlay.style.opacity = "0";
+          overlay.style.boxShadow =
+            "inset 0 0 120px rgba(204, 120, 92, 0.2), inset 0 0 40px rgba(232, 165, 90, 0.1)";
+        }
+
+        // Stagger between multiple changes
+        if (i < changes.length - 1) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
+
+      // Scroll to first changed line
+      const finalDoc = view.state.doc;
+      const firstLine = finalDoc.line(
+        Math.min(changes[0].startLine, finalDoc.lines),
+      );
+      view.dispatch({
+        selection: { anchor: firstLine.from },
+        effects: EditorView.scrollIntoView(firstLine.from, { y: "center" }),
+      });
+
+      onChangesDone?.();
+    },
+    [onChangesDone],
+  );
+
+  // Watch for incremental changes
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !applyChanges?.length) return;
+
+    // Use a ref to prevent duplicate processing
+    applyIncrementalChanges(view, applyChanges);
+  }, [applyChanges, applyIncrementalChanges]);
 
   return (
     <div className="relative h-full" style={{ minHeight: 0 }}>
