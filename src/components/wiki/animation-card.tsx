@@ -73,10 +73,12 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
             messages: [
               {
                 role: "user",
-                content: `为"${wikiTitle}"中的概念生成 Manim 动画：\n"${prompt}"`,
+                content: prompt,
               },
             ],
-            currentCode: "",
+            // Non-empty currentCode triggers edit mode → reasoning_effort: "high" (not max)
+            // Avoids 60-90s thinking phase on wiki inline cards
+            currentCode: `from manim import *\n\nclass MyScene(Scene):\n    def construct(self):\n        pass\n`,
           }),
         });
 
