@@ -2,6 +2,7 @@ import { SandboxContent } from "./sandbox-content";
 
 type SandboxSearchParams = Promise<{
   fork?: string | string[];
+  job?: string | string[];
   prompt?: string | string[];
 }>;
 
@@ -19,6 +20,7 @@ export default async function SandboxPage({
     <SandboxContent
       forkId={firstValue(query.fork) || null}
       initialPrompt={firstValue(query.prompt)}
+      jobId={firstValue(query.job).trim() || null}
     />
   );
 }

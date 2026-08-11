@@ -11,6 +11,11 @@ import { useChat } from "@/hooks/use-chat";
 import { createClient } from "@/lib/supabase/client";
 import { isLocalRendererUrl } from "@/lib/utils";
 import {
+  resolveStudioEntrance,
+  STUDIO_PRESENTATION_MARKER,
+  type StudioEntrance,
+} from "@/lib/studio/entrance-motion";
+import {
   Code2,
   Play,
   Loader2,
@@ -39,6 +44,7 @@ class FirstScene(Scene):
 interface SandboxContentProps {
   forkId: string | null;
   initialPrompt: string;
+  jobId: string | null;
 }
 
 function readLegacySandboxPayload() {
@@ -50,7 +56,11 @@ function readLegacySandboxPayload() {
 export function SandboxContent({
   forkId,
   initialPrompt,
+  jobId,
 }: SandboxContentProps) {
+  const [entrance, setEntrance] = useState<StudioEntrance>(() =>
+    resolveStudioEntrance({ hasPresentationMarker: true, jobId }),
+  );
   const [code, setCode] = useState(DEFAULT_CODE);
   const [forkedFrom, setForkedFrom] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<
@@ -61,6 +71,29 @@ export function SandboxContent({
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<import("@/lib/ai/prompts").CodeChange[] | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      let hasPresentationMarker = true;
+      try {
+        hasPresentationMarker =
+          sessionStorage.getItem(STUDIO_PRESENTATION_MARKER) === "1";
+        sessionStorage.setItem(STUDIO_PRESENTATION_MARKER, "1");
+      } catch {
+        // Storage may be unavailable; keep the settled fallback.
+      }
+
+      setEntrance(resolveStudioEntrance({ hasPresentationMarker, jobId }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
 
   // Load forked visualization source code
   useEffect(() => {
@@ -190,12 +223,21 @@ export function SandboxContent({
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative">
+    <div
+      className="studio-entrance-shell min-h-screen flex flex-col relative"
+      data-studio-entrance={entrance}
+    >
       <ParticlesBackground />
       <AppHeader />
-      <main className="flex-1 flex pt-16 z-10 min-h-0">
+      <main
+        className="flex-1 flex pt-16 z-10 min-h-0"
+        data-studio-motion-layer="shell"
+      >
         {/* Left: Chat Panel */}
-        <aside className="w-[380px] shrink-0 border-r border-border/50 h-[calc(100vh-4rem)]">
+        <aside
+          className="w-[380px] shrink-0 border-r border-border/50 h-[calc(100vh-4rem)]"
+          data-studio-motion-layer="task"
+        >
           <ChatPanel
             messages={messages}
             isLoading={isLoading}
@@ -208,7 +250,10 @@ export function SandboxContent({
         </aside>
 
         {/* Right: Code Editor + Toolbar + Video Preview */}
-        <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] min-w-0 min-h-0">
+        <div
+          className="flex-1 flex flex-col h-[calc(100vh-4rem)] min-w-0 min-h-0"
+          data-studio-motion-layer="canvas"
+        >
           {/* Toolbar */}
           <div className="h-12 border-b border-border/50 flex items-center px-4 gap-3 shrink-0">
             <Code2 className="w-4 h-4 text-muted-foreground" />
@@ -314,7 +359,10 @@ export function SandboxContent({
           )}
 
           {/* Code Editor */}
-          <div className="flex-1 overflow-hidden">
+          <div
+            className="flex-1 overflow-hidden"
+            data-studio-motion-layer="code"
+          >
             <CodeEditor
               value={code}
               onChange={setCode}

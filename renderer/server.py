@@ -1,56 +1,77 @@
-"""
-Mathiverse Local Renderer — FastAPI server for Manim rendering.
-
-Usage:
-    pip install -r requirements.txt
-    python server.py
-
-The server starts on http://localhost:9876.
-The Next.js app proxies /api/render to this server.
-
-Endpoints:
-    GET  /health          — Check renderer status
-    POST /render          — Render Manim code, return video
-    GET  /output/{file}   — Serve rendered files
-"""
+"""Mathiverse local FastAPI service for validated, cancellable Manim renders."""
 
 from __future__ import annotations
 
-import hashlib
+import asyncio
 import json
+import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
+import threading
+import uuid
+from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-# ─── Config ────────────────────────────────────────────────────────────
+try:
+    from renderer.core import (
+        ValidationIssue,
+        compute_render_key,
+        is_render_cacheable,
+        validate_code,
+    )
+except ModuleNotFoundError:  # Supports `cd renderer && python server.py`.
+    from core import (  # type: ignore[no-redef]
+        ValidationIssue,
+        compute_render_key,
+        is_render_cacheable,
+        validate_code,
+    )
+
 
 HOST = "127.0.0.1"
 PORT = 9876
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "mathiverse-renderer"
-MANIM_TIMEOUT = 120  # seconds
-MAX_CODE_SIZE = 50_000  # characters
+STAGING_DIR = OUTPUT_DIR / ".staging"
+MANIM_TIMEOUT = 120
+MAX_CODE_SIZE = 50_000
+MAX_ERROR_DETAIL = 6_000
+VALID_QUALITIES = frozenset({"-ql", "-qm", "-qh", "-qk"})
+VALID_FORMATS = frozenset({"mp4", "gif"})
 
-# Ensure output directory exists
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
-# ─── App ───────────────────────────────────────────────────────────────
+LOGGER = logging.getLogger("mathiverse.renderer")
+ACTIVE_PROCESSES: dict[str, subprocess.Popen[str]] = {}
+ACTIVE_PROCESSES_LOCK = threading.Lock()
+CANCELLED_REQUESTS: set[str] = set()
+
+
+class _KeyLockEntry:
+    def __init__(self) -> None:
+        self.lock = asyncio.Lock()
+        self.users = 0
+
+
+KEY_LOCKS: dict[str, _KeyLockEntry] = {}
+KEY_LOCKS_GUARD = asyncio.Lock()
+
 
 app = FastAPI(
     title="Mathiverse Renderer",
     description="Local Manim rendering service for Mathiverse",
-    version="0.1.0",
+    version="0.2.0",
 )
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -62,17 +83,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Mount output directory for serving rendered files
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 
 
-# ─── Models ────────────────────────────────────────────────────────────
+class ValidationIssueModel(BaseModel):
+    code: str
+    message: str
+    line: int | None = None
+    column: int | None = None
+
+
+class ValidationRequest(BaseModel):
+    code: str
+
+
+class ValidationResponse(BaseModel):
+    valid: bool
+    scene_name: str | None = None
+    issues: list[ValidationIssueModel] = Field(default_factory=list)
+
 
 class RenderRequest(BaseModel):
     code: str
-    quality: str = "-ql"  # -ql, -qm, -qh, -qk
-    format: str = "mp4"    # mp4 or gif
+    quality: str = "-ql"
+    format: str = "mp4"
+    request_id: str = Field(min_length=1, max_length=128)
 
 
 class RenderResponse(BaseModel):
@@ -81,7 +116,10 @@ class RenderResponse(BaseModel):
     gif_url: str | None = None
     duration: float | None = None
     error: str | None = None
+    diagnostics: list[ValidationIssueModel] = Field(default_factory=list)
     scene_name: str | None = None
+    render_key: str | None = None
+    cache_hit: bool = False
 
 
 class HealthResponse(BaseModel):
@@ -91,183 +129,279 @@ class HealthResponse(BaseModel):
     platform: str
 
 
-# ─── Helpers ───────────────────────────────────────────────────────────
+def _issue_model(issue: ValidationIssue) -> ValidationIssueModel:
+    return ValidationIssueModel(
+        code=issue.code,
+        message=issue.message,
+        line=issue.line,
+        column=issue.column,
+    )
 
+
+@lru_cache(maxsize=1)
 def get_manim_version() -> str | None:
-    """Get installed Manim version."""
+    """Return the installed Manim version without spawning per request."""
     try:
         result = subprocess.run(
             [sys.executable, "-m", "manim", "--version"],
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
-        return result.stdout.strip() or result.stderr.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
+    if result.returncode != 0:
+        return None
+    output = (result.stdout or result.stderr).strip()
+    match = re.search(r"(\d+\.\d+(?:\.\d+)?(?:[-+._a-zA-Z0-9]*)?)", output)
+    return match.group(1) if match else output or None
 
 
-def check_manim_installed() -> bool:
-    """Check if Manim is installed and importable."""
-    try:
-        subprocess.run(
-            [sys.executable, "-c", "import manim"],
-            capture_output=True,
-            timeout=10,
-        )
+def _cached_path(render_key: str, scene_name: str, fmt: str) -> Path:
+    return OUTPUT_DIR / render_key / f"{scene_name}.{fmt}"
+
+
+def _artifact_response(
+    path: Path,
+    fmt: str,
+    scene_name: str,
+    render_key: str,
+    *,
+    cache_hit: bool,
+) -> RenderResponse:
+    relative = path.relative_to(OUTPUT_DIR).as_posix()
+    url = f"http://{HOST}:{PORT}/output/{relative}"
+    return RenderResponse(
+        success=True,
+        video_url=url if fmt == "mp4" else None,
+        gif_url=url if fmt == "gif" else None,
+        duration=estimate_duration(path),
+        scene_name=scene_name,
+        render_key=render_key,
+        cache_hit=cache_hit,
+    )
+
+
+def _sanitize_detail(detail: str, staging_dir: Path) -> str:
+    clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", detail)
+    replacements = {
+        str(staging_dir): "<render-workspace>",
+        str(OUTPUT_DIR): "<render-output>",
+        tempfile.gettempdir(): "<temp>",
+    }
+    for value, replacement in sorted(replacements.items(), key=lambda item: -len(item[0])):
+        clean = clean.replace(value, replacement)
+    clean = clean.strip()
+    if len(clean) > MAX_ERROR_DETAIL:
+        clean = "[technical detail truncated]\n" + clean[-MAX_ERROR_DETAIL:]
+    return clean
+
+
+def _render_diagnostic(detail: str) -> ValidationIssueModel:
+    line_match = re.search(r"scene\.py[^\n]*?line\s+(\d+)", detail, re.IGNORECASE)
+    return ValidationIssueModel(
+        code="render",
+        message="Manim could not render this scene.",
+        line=int(line_match.group(1)) if line_match else None,
+    )
+
+
+def _register_process(request_id: str, process: subprocess.Popen[str]) -> bool:
+    with ACTIVE_PROCESSES_LOCK:
+        if request_id in ACTIVE_PROCESSES:
+            return False
+        ACTIVE_PROCESSES[request_id] = process
         return True
-    except Exception:
-        return False
 
 
-def extract_scene_name(code: str) -> str | None:
-    """Extract the Scene class name from Manim code."""
-    import re
+def _unregister_process(request_id: str, process: subprocess.Popen[str]) -> bool:
+    with ACTIVE_PROCESSES_LOCK:
+        if ACTIVE_PROCESSES.get(request_id) is not process:
+            return False
+        cancelled = request_id in CANCELLED_REQUESTS
+        CANCELLED_REQUESTS.discard(request_id)
+        ACTIVE_PROCESSES.pop(request_id, None)
+        return cancelled
 
-    match = re.search(r"class\s+(\w+)\s*\(\s*(?:ThreeD)?Scene\s*\)", code)
-    return match.group(1) if match else None
+
+def _cancel_process(request_id: str) -> bool:
+    with ACTIVE_PROCESSES_LOCK:
+        process = ACTIVE_PROCESSES.get(request_id)
+        if process is None:
+            return False
+        CANCELLED_REQUESTS.add(request_id)
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=3)
+    return True
 
 
-def render_manim(code: str, quality: str, fmt: str) -> RenderResponse:
-    """Render Manim code and return the output file info."""
-    if not check_manim_installed():
-        return RenderResponse(
-            success=False,
-            error=(
-                "Manim 未安装。请运行: pip install manim\n"
-                "或参考 renderer/README.md 安装指南。"
-            ),
-        )
-
-    scene_name = extract_scene_name(code)
-    if not scene_name:
-        return RenderResponse(
-            success=False,
-            error="未找到 Scene 类。请确保代码中包含类似 'class MyScene(Scene):' 的定义。",
-        )
-
-    # Create a unique job directory
-    job_hash = hashlib.sha256(
-        (code + quality + fmt + str(time.time())).encode()
-    ).hexdigest()[:12]
-    job_dir = OUTPUT_DIR / job_hash
-    job_dir.mkdir(parents=True, exist_ok=True)
-
-    # Write the code file
-    code_file = job_dir / "scene.py"
-    code_file.write_text(code, encoding="utf-8")
-
+@asynccontextmanager
+async def _render_key_lock(render_key: str):
+    async with KEY_LOCKS_GUARD:
+        entry = KEY_LOCKS.setdefault(render_key, _KeyLockEntry())
+        entry.users += 1
+    acquired = False
     try:
-        # Run manim
-        quality_flag = quality
-        if fmt == "gif":
-            quality_flag += " --format=gif"
+        await entry.lock.acquire()
+        acquired = True
+        yield
+    finally:
+        if acquired:
+            entry.lock.release()
+        async with KEY_LOCKS_GUARD:
+            entry.users -= 1
+            if entry.users == 0 and KEY_LOCKS.get(render_key) is entry:
+                KEY_LOCKS.pop(render_key, None)
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "manim",
-                str(code_file),
-                scene_name,
-                quality_flag,
-            ],
-            capture_output=True,
+
+def _find_rendered_file(staging_dir: Path, scene_name: str, fmt: str) -> Path | None:
+    candidates = list((staging_dir / "media").rglob(f"*.{fmt}"))
+    exact = next((path for path in candidates if path.stem == scene_name), None)
+    return exact or (candidates[0] if candidates else None)
+
+
+def _publish_artifact(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _render_manim_blocking(
+    code: str,
+    quality: str,
+    fmt: str,
+    request_id: str,
+    scene_name: str,
+    render_key: str,
+    destination: Path,
+) -> RenderResponse:
+    staging_dir = Path(tempfile.mkdtemp(prefix=f"{render_key}-", dir=STAGING_DIR))
+    code_file = staging_dir / "scene.py"
+    code_file.write_text(code.replace("\r\n", "\n"), encoding="utf-8")
+    command = [
+        sys.executable,
+        "-m",
+        "manim",
+        str(code_file),
+        scene_name,
+        quality,
+        "--format",
+        fmt,
+    ]
+    process: subprocess.Popen[str] | None = None
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=MANIM_TIMEOUT,
-            cwd=str(job_dir),
+            cwd=staging_dir,
         )
-
-        if result.returncode != 0:
-            error_msg = result.stderr or result.stdout
-            # Extract the most useful part of the error
-            lines = error_msg.strip().split("\n")
-            key_lines = [
-                l
-                for l in lines
-                if "Error" in l or "error" in l or "Traceback" in l
-            ]
-            short_error = (
-                "\n".join(key_lines[-3:])
-                if key_lines
-                else lines[-1] if lines else "Unknown error"
-            )
+        if not _register_process(request_id, process):
+            process.terminate()
+            process.wait(timeout=3)
             return RenderResponse(
                 success=False,
-                error=f"Manim 渲染失败:\n{short_error}",
+                error="该 request_id 已有渲染任务正在运行。",
+                diagnostics=[ValidationIssueModel(code="request", message="Duplicate active request_id.")],
                 scene_name=scene_name,
+                render_key=render_key,
             )
 
-        # Locate the output file
-        media_dir = job_dir / "media"
-        video_dir = None
-
-        # Manim output structure: media/videos/scene/QUALITY/
-        for root, dirs, files in os.walk(str(media_dir)):
-            for f in files:
-                if f.endswith(f".{fmt}"):
-                    video_dir = Path(root)
-                    break
-            if video_dir:
-                break
-
-        if not video_dir:
+        try:
+            stdout, stderr = process.communicate(timeout=MANIM_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                stdout, stderr = process.communicate(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+            detail = stderr or stdout or "Manim timed out without diagnostic output."
+            LOGGER.error("Manim render timed out for key %s:\n%s", render_key, detail)
+            clean = _sanitize_detail(detail, staging_dir)
             return RenderResponse(
                 success=False,
-                error="渲染完成但未找到输出文件。请检查代码是否正确。",
+                error=f"渲染超时（{MANIM_TIMEOUT}秒）。\n{clean}",
+                diagnostics=[ValidationIssueModel(code="timeout", message="Manim render timed out.")],
                 scene_name=scene_name,
+                render_key=render_key,
             )
 
-        output_file = video_dir / f"{scene_name}.{fmt}"
-        if not output_file.exists():
-            # Try to find any output file
-            candidates = list(video_dir.glob(f"*.{fmt}"))
-            if candidates:
-                output_file = candidates[0]
-            else:
-                return RenderResponse(
-                    success=False,
-                    error=f"未找到 .{fmt} 输出文件。检查渲染参数。",
-                    scene_name=scene_name,
-                )
+        returncode = process.returncode
+        cancelled = _unregister_process(request_id, process)
+        process = None
+        if cancelled:
+            return RenderResponse(
+                success=False,
+                error="渲染已取消。",
+                diagnostics=[ValidationIssueModel(code="cancelled", message="Render was cancelled.")],
+                scene_name=scene_name,
+                render_key=render_key,
+            )
+        if returncode != 0:
+            detail = stderr or stdout or f"Manim exited with status {returncode}."
+            LOGGER.error("Manim render failed for key %s:\n%s", render_key, detail)
+            clean = _sanitize_detail(detail, staging_dir)
+            return RenderResponse(
+                success=False,
+                error=f"Manim 渲染失败。\n{clean}",
+                diagnostics=[_render_diagnostic(detail)],
+                scene_name=scene_name,
+                render_key=render_key,
+            )
 
-        # Copy to a stable location
-        final_name = f"{job_hash}_{scene_name}.{fmt}"
-        final_path = OUTPUT_DIR / final_name
-        shutil.copy2(output_file, final_path)
+        rendered = _find_rendered_file(staging_dir, scene_name, fmt)
+        if rendered is None:
+            detail = stderr or stdout or "Manim produced no output file."
+            LOGGER.error("Manim produced no output for key %s:\n%s", render_key, detail)
+            clean = _sanitize_detail(detail, staging_dir)
+            return RenderResponse(
+                success=False,
+                error=f"渲染完成但未找到输出文件。\n{clean}",
+                diagnostics=[_render_diagnostic(detail)],
+                scene_name=scene_name,
+                render_key=render_key,
+            )
 
-        # Clean up job directory
-        shutil.rmtree(job_dir, ignore_errors=True)
-
-        video_url = f"http://{HOST}:{PORT}/output/{final_name}"
-        duration = estimate_duration(final_path)
-
-        return RenderResponse(
-            success=True,
-            video_url=video_url if fmt == "mp4" else None,
-            gif_url=video_url if fmt == "gif" else None,
-            duration=duration,
-            scene_name=scene_name,
+        _publish_artifact(rendered, destination)
+        return _artifact_response(
+            destination,
+            fmt,
+            scene_name,
+            render_key,
+            cache_hit=False,
         )
-
-    except subprocess.TimeoutExpired:
-        shutil.rmtree(job_dir, ignore_errors=True)
+    except OSError as exc:
+        LOGGER.exception("Failed to launch or publish Manim render for key %s", render_key)
+        clean = _sanitize_detail(str(exc), staging_dir)
         return RenderResponse(
             success=False,
-            error=f"渲染超时（{MANIM_TIMEOUT}秒）。代码可能过于复杂。",
+            error=f"无法启动 Manim 渲染器：{clean}",
+            diagnostics=[ValidationIssueModel(code="environment", message="Manim could not be started.")],
             scene_name=scene_name,
+            render_key=render_key,
         )
-    except Exception as e:
-        shutil.rmtree(job_dir, ignore_errors=True)
-        return RenderResponse(
-            success=False,
-            error=f"渲染时发生异常: {str(e)}",
-            scene_name=scene_name,
-        )
+    finally:
+        if process is not None:
+            _unregister_process(request_id, process)
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=3)
+        shutil.rmtree(staging_dir, ignore_errors=True)
 
 
 def estimate_duration(filepath: Path) -> float | None:
-    """Estimate video duration using ffprobe if available."""
     try:
         result = subprocess.run(
             [
@@ -283,71 +417,132 @@ def estimate_duration(filepath: Path) -> float | None:
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
-        data = json.loads(result.stdout)
-        return float(data["format"]["duration"])
-    except Exception:
+        return float(json.loads(result.stdout)["format"]["duration"])
+    except (OSError, ValueError, KeyError, json.JSONDecodeError, subprocess.SubprocessError):
         return None
 
 
-# ─── Routes ────────────────────────────────────────────────────────────
-
 @app.get("/health", response_model=HealthResponse)
-async def health():
-    """Health check endpoint."""
+async def health() -> HealthResponse:
+    version = await asyncio.to_thread(get_manim_version)
     return HealthResponse(
-        status="ok" if check_manim_installed() else "manim_not_installed",
-        manim_version=get_manim_version(),
+        status="ok" if version else "manim_not_installed",
+        manim_version=version,
         python_version=sys.version,
         platform=sys.platform,
     )
 
 
-@app.post("/render", response_model=RenderResponse)
-async def render(request: RenderRequest):
-    """Render Manim code and return video URL."""
+@app.post("/validate", response_model=ValidationResponse)
+async def validate(request: ValidationRequest) -> ValidationResponse:
     if len(request.code) > MAX_CODE_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"代码超过最大长度限制 ({MAX_CODE_SIZE} 字符)。",
+        return ValidationResponse(
+            valid=False,
+            issues=[ValidationIssueModel(code="size", message=f"Code exceeds {MAX_CODE_SIZE} characters.")],
+        )
+    result = await asyncio.to_thread(validate_code, request.code)
+    return ValidationResponse(
+        valid=result.valid,
+        scene_name=result.scene_name,
+        issues=[_issue_model(issue) for issue in result.issues],
+    )
+
+
+@app.post("/render", response_model=RenderResponse)
+async def render(request: RenderRequest) -> RenderResponse:
+    if len(request.code) > MAX_CODE_SIZE:
+        return RenderResponse(success=False, error=f"代码超过最大长度限制（{MAX_CODE_SIZE}字符）。")
+    if request.format not in VALID_FORMATS:
+        return RenderResponse(success=False, error="不支持的输出格式。请使用 mp4 或 gif。")
+    if request.quality not in VALID_QUALITIES:
+        return RenderResponse(success=False, error="不支持的质量参数。请使用 -ql、-qm、-qh 或 -qk。")
+
+    validation = await asyncio.to_thread(validate_code, request.code)
+    diagnostics = [_issue_model(issue) for issue in validation.issues]
+    if not validation.valid or validation.scene_name is None:
+        return RenderResponse(
+            success=False,
+            error=diagnostics[0].message if diagnostics else "代码验证失败。",
+            diagnostics=diagnostics,
+            scene_name=validation.scene_name,
         )
 
-    if request.format not in ("mp4", "gif"):
-        raise HTTPException(
-            status_code=400,
-            detail="不支持的输出格式。请使用 'mp4' 或 'gif'。",
+    manim_version = await asyncio.to_thread(get_manim_version)
+    if manim_version is None:
+        return RenderResponse(
+            success=False,
+            error="Manim 未安装。请参考 renderer/README.md 安装。",
+            diagnostics=[ValidationIssueModel(code="environment", message="Manim is not installed.")],
+            scene_name=validation.scene_name,
         )
 
-    if request.quality not in ("-ql", "-qm", "-qh", "-qk"):
-        raise HTTPException(
-            status_code=400,
-            detail="不支持的质量参数。请使用 -ql, -qm, -qh, 或 -qk。",
+    render_key = compute_render_key(
+        request.code,
+        request.quality,
+        request.format,
+        manim_version,
+    )
+    cacheable = is_render_cacheable(request.code)
+    stable_path = _cached_path(render_key, validation.scene_name, request.format)
+
+    async with _render_key_lock(render_key):
+        if cacheable and await asyncio.to_thread(stable_path.is_file):
+            return await asyncio.to_thread(
+                _artifact_response,
+                stable_path,
+                request.format,
+                validation.scene_name,
+                render_key,
+                cache_hit=True,
+            )
+
+        if cacheable:
+            destination = stable_path
+        else:
+            destination = (
+                OUTPUT_DIR
+                / "volatile"
+                / uuid.uuid4().hex
+                / f"{validation.scene_name}.{request.format}"
+            )
+        return await asyncio.to_thread(
+            _render_manim_blocking,
+            request.code,
+            request.quality,
+            request.format,
+            request.request_id,
+            validation.scene_name,
+            render_key,
+            destination,
         )
 
-    result = render_manim(request.code, request.quality, request.format)
-    if not result.success:
-        raise HTTPException(status_code=422, detail=result.error)
 
-    return result
+@app.delete("/render/{request_id}")
+async def cancel_render(request_id: str) -> dict[str, bool]:
+    return {"cancelled": await asyncio.to_thread(_cancel_process, request_id)}
 
 
 @app.get("/outputs")
-async def list_outputs():
-    """List all rendered outputs (for cleanup)."""
-    files = []
-    for f in OUTPUT_DIR.iterdir():
-        if f.is_file():
+async def list_outputs() -> dict[str, list[dict[str, str | int]]]:
+    def collect() -> list[dict[str, str | int]]:
+        files = []
+        for path in OUTPUT_DIR.rglob("*"):
+            if not path.is_file() or STAGING_DIR in path.parents:
+                continue
+            relative = path.relative_to(OUTPUT_DIR).as_posix()
             files.append(
                 {
-                    "name": f.name,
-                    "size": f.stat().st_size,
-                    "url": f"http://{HOST}:{PORT}/output/{f.name}",
+                    "name": relative,
+                    "size": path.stat().st_size,
+                    "url": f"http://{HOST}:{PORT}/output/{relative}",
                 }
             )
-    return {"files": files}
+        return files
 
+    return {"files": await asyncio.to_thread(collect)}
 
-# ─── Main ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
@@ -357,10 +552,4 @@ if __name__ == "__main__":
     print(f"  http://{HOST}:{PORT}")
     print(f"  Output dir: {OUTPUT_DIR}")
     print("=" * 56)
-
-    if not check_manim_installed():
-        print("\n⚠️  警告: Manim 未安装!")
-        print("  请运行: pip install manim")
-        print("  渲染功能将不可用。\n")
-
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
