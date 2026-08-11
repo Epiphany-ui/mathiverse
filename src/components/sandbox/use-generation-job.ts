@@ -16,6 +16,13 @@ type UseGenerationJobOptions = {
   initialJobId: string | null;
 };
 
+const GENERATION_EVENT_TYPES: GenerationEvent["type"][] = [
+  "job.accepted", "phase.changed", "plan.ready", "code.delta",
+  "version.created", "validation.completed", "render.started",
+  "render.completed", "render.failed", "repair.started",
+  "job.completed", "job.failed", "job.cancelled",
+];
+
 export function useGenerationJob(options: UseGenerationJobOptions) {
   const [state, dispatch] = useReducer(
     studioClientReducer,
@@ -58,7 +65,7 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
       dispatch({ type: "connection.changed", connection: "reconnecting" });
       void refreshSnapshot(jobId);
     };
-    source.onmessage = (message) => {
+    const handleMessage = (message: MessageEvent<string>) => {
       try {
         const event = JSON.parse(message.data) as GenerationEvent;
         dispatch({ type: "event.received", jobId, event });
@@ -67,6 +74,9 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
         void refreshSnapshot(jobId);
       }
     };
+    for (const type of GENERATION_EVENT_TYPES) {
+      source.addEventListener(type, handleMessage as EventListener);
+    }
     return () => {
       source.close();
       if (sourceRef.current === source) sourceRef.current = null;
