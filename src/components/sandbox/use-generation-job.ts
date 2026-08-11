@@ -69,6 +69,10 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
       try {
         const event = JSON.parse(message.data) as GenerationEvent;
         dispatch({ type: "event.received", jobId, event });
+        if (event.type === "job.completed" || event.type === "job.failed" || event.type === "job.cancelled") {
+          source.close();
+          dispatch({ type: "connection.changed", connection: "closed" });
+        }
       } catch {
         dispatch({ type: "error", message: "生成事件格式异常，正在恢复状态" });
         void refreshSnapshot(jobId);

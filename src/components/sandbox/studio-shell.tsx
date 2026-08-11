@@ -15,10 +15,11 @@ type Controller = ReturnType<typeof useGenerationJob>;
 export function StudioShell({ controller, initialPrompt, onOpenPublish }: { controller: Controller; initialPrompt: string; onOpenPublish: () => void }) {
   const { state } = controller;
   const [prompt, setPrompt] = useState(initialPrompt);
-  const [mediaError, setMediaError] = useState(false);
-  const working = state.snapshot?.status === "queued" || state.snapshot?.status === "running";
-  const canvasState = mediaError ? "error" : getCanvasState(state.snapshot);
+  const [failedVideo, setFailedVideo] = useState<string | null>(null);
+  const working = !state.isTakingOver && (state.snapshot?.status === "queued" || state.snapshot?.status === "running");
   const rawVideo = state.snapshot?.render?.url;
+  const mediaError = Boolean(rawVideo && failedVideo === rawVideo);
+  const canvasState = mediaError ? "error" : getCanvasState(state.snapshot);
   const video = rawVideo && isLocalRendererUrl(rawVideo) ? `/api/video-proxy?url=${encodeURIComponent(rawVideo)}` : rawVideo;
   const phaseIndex = ["planning", "retrieving", "generating", "validating", "rendering"].indexOf(state.snapshot?.phase ?? "");
 
@@ -40,7 +41,7 @@ export function StudioShell({ controller, initialPrompt, onOpenPublish }: { cont
         <div className="canvasStage">
           {canvasState === "idle" && <div className="emptyCanvas"><Clapperboard /><strong>舞台已就绪</strong><p>提交任务后，规划、代码和渲染结果会在这里连续更新。</p></div>}
           {canvasState === "working" && <div className="workingCanvas"><LoaderCircle /><strong>证明正在展开</strong><p>可以离开页面；任务会在后台继续，回来后自动恢复。</p></div>}
-          {canvasState === "preview" && video && <video key={video} src={video} controls playsInline onError={() => setMediaError(true)}>浏览器无法播放此视频。</video>}
+          {canvasState === "preview" && video && <video key={video} src={video} controls playsInline onError={() => setFailedVideo(rawVideo ?? null)}>浏览器无法播放此视频。</video>}
           {canvasState === "error" && <div className="errorCanvas"><AlertTriangle /><strong>预览尚未生成</strong><p>{mediaError ? "视频加载失败，请重新渲染。" : state.snapshot?.failureReason ?? "检查代码后重试或使用自动修复。"}</p><button type="button" onClick={() => void controller.retry()}>重新尝试</button></div>}
         </div>
       </section>
