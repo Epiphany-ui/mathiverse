@@ -20,6 +20,7 @@ import {
   User,
   LogIn,
   Menu,
+  LayoutDashboard,
   LogOut,
   Settings,
 } from "lucide-react";
@@ -37,7 +38,7 @@ const NAV_ITEMS = [
 ] as const;
 
 interface AppHeaderProps {
-  appearance?: "default" | "gallery";
+  appearance?: "default" | "gallery" | "studio";
 }
 
 export function AppHeader({ appearance = "default" }: AppHeaderProps) {
@@ -45,6 +46,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
 
@@ -84,6 +86,15 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchUnreadCount(session.user.id);
+        // Check admin role
+        supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data?.role === "admin" || data?.role === "owner") setIsAdmin(true);
+          }, () => {});
       }
     });
 
@@ -92,6 +103,14 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
         setUser(session?.user ?? null);
         if (session?.user) {
           fetchUnreadCount(session.user.id);
+          supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user.id)
+            .single()
+            .then(({ data }) => {
+              if (data?.role === "admin" || data?.role === "owner") setIsAdmin(true);
+            }, () => {});
         }
       },
     );
@@ -108,12 +127,16 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
     }
   };
   const galleryAtTop = appearance === "gallery" && !scrolled;
+  const studioHeader = appearance === "studio";
+  const darkHeader = galleryAtTop || studioHeader;
 
   return (
     <header
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-        galleryAtTop
+        studioHeader
+          ? "bg-[#071012]/96 border-b border-[rgba(190,232,225,.14)] text-[#e8f1ed]"
+          : galleryAtTop
           ? "bg-transparent border-b border-transparent"
           : scrolled
             ? "bg-[#faf9f5]/95 backdrop-blur-md border-b border-[#e6dfd8] shadow-sm"
@@ -126,7 +149,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
           href="/"
           className={cn(
             "flex items-center gap-2 shrink-0",
-            galleryAtTop && "text-[#f2f3ed]",
+            darkHeader && "text-[#f2f3ed]",
           )}
         >
           <div className="w-8 h-8 rounded-md bg-[#cc785c] flex items-center justify-center">
@@ -146,7 +169,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
                 size="sm"
                 className={cn(
                   "gap-1.5",
-                  galleryAtTop && "text-[#f2f3ed]",
+                  darkHeader && "text-[#f2f3ed]",
                 )}
               >
                 <Icon className="w-4 h-4" />
@@ -186,7 +209,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
               size="icon"
               className={cn(
                 "h-9 w-9",
-                galleryAtTop && "text-[#f2f3ed]",
+                darkHeader && "text-[#f2f3ed]",
               )}
               onClick={() => setSearchOpen(true)}
             >
@@ -202,7 +225,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
             <NotificationDropdown
               unreadCount={unreadCount}
               onUnreadCountChange={setUnreadCount}
-              className={galleryAtTop ? "text-[#f2f3ed]" : undefined}
+              className={darkHeader ? "text-[#f2f3ed]" : undefined}
             />
           )}
           {user ? (
@@ -227,6 +250,16 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
                   <User className="w-4 h-4 mr-2" />
                   个人主页
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      window.location.href = "/admin";
+                    }}
+                  >
+                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                    管理后台
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={() => {
                     window.location.href = "/settings";
@@ -250,7 +283,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
                   size="sm"
                   className={cn(
                     "gap-1.5",
-                    galleryAtTop && "text-[#f2f3ed]",
+                    darkHeader && "text-[#f2f3ed]",
                   )}
                 >
                   <LogIn className="w-4 h-4" />
@@ -262,7 +295,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
                   size="sm"
                   className={cn(
                     "gap-1.5 bg-[#cc785c] hover:bg-[#a9583e]",
-                    galleryAtTop && "border border-white/20 text-[#f2f3ed]",
+                    darkHeader && "border border-white/20 text-[#f2f3ed]",
                   )}
                 >
                   <User className="w-4 h-4" />
@@ -279,7 +312,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
           size="icon"
           className={cn(
             "md:hidden",
-            galleryAtTop && "text-[#f2f3ed]",
+            darkHeader && "text-[#f2f3ed]",
           )}
           onClick={() => setMobileOpen(true)}
         >

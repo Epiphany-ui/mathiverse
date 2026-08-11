@@ -97,6 +97,7 @@ interface CodeEditorProps {
   applyChanges?: CodeChange[] | null;
   /** Called after all changes have been applied. */
   onChangesDone?: () => void;
+  externalUpdateMode?: "immediate" | "paint";
 }
 
 export function CodeEditor({
@@ -106,6 +107,7 @@ export function CodeEditor({
   autoFocus = true,
   applyChanges,
   onChangesDone,
+  externalUpdateMode = "paint",
 }: CodeEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -223,11 +225,7 @@ export function CodeEditor({
         ...completionKeymap,
       ]),
       autocompletion(),
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          handleChange(update.state.doc.toString());
-        }
-      }),
+      updateListener,
     ];
 
     if (readOnly) {
@@ -263,9 +261,18 @@ export function CodeEditor({
 
     const currentDoc = view.state.doc.toString();
     if (value !== currentDoc && value !== editorValueRef.current) {
-      typewriteCode(view, value);
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (externalUpdateMode === "immediate" || reduceMotion) {
+        typewriterRef.current?.abort();
+        typewritingRef.current = true;
+        view.dispatch({ changes: { from: 0, to: currentDoc.length, insert: value } });
+        typewritingRef.current = false;
+        editorValueRef.current = value;
+      } else {
+        void typewriteCode(view, value);
+      }
     }
-  }, [value, typewriteCode]);
+  }, [value, typewriteCode, externalUpdateMode]);
 
   // Incremental change application with canvas erase/write animation
   const applyIncrementalChanges = useCallback(
