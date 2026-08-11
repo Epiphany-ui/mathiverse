@@ -1,3 +1,6 @@
+// Generation job contracts — shared by server orchestrator and client UI.
+// No application module imports; pure TypeScript shapes.
+
 export const GENERATION_PHASES = [
   "queued",
   "planning",
@@ -9,23 +12,29 @@ export const GENERATION_PHASES = [
 ] as const;
 
 export type GenerationPhase = (typeof GENERATION_PHASES)[number];
+
 export type GenerationStatus =
   | "queued"
   | "running"
   | "completed"
   | "failed"
   | "cancelled";
+
 export type GenerationMode = "new" | "edit" | "repair";
+
 export type GenerationOperation =
   | "generate"
   | "render"
   | "repair"
   | "high_quality_render";
+
 export type GenerationVersionSource =
   | "generated"
   | "auto_repair"
   | "manual"
   | "rollback";
+
+// ─── Scene Plan ────────────────────────────────────────────────
 
 export interface ScenePlan {
   objects: string[];
@@ -34,6 +43,8 @@ export interface ScenePlan {
   trackers: string[];
   estimatedComplexity: "simple" | "standard" | "complex";
 }
+
+// ─── Validation ────────────────────────────────────────────────
 
 export interface ValidationIssue {
   code: "syntax" | "scene" | "security" | "api" | "render" | "timeout";
@@ -48,6 +59,8 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
+// ─── Render ────────────────────────────────────────────────────
+
 export interface RenderArtifact {
   url: string;
   format: "mp4" | "gif";
@@ -56,6 +69,8 @@ export interface RenderArtifact {
   cacheHit: boolean;
   renderKey: string;
 }
+
+// ─── Versions ──────────────────────────────────────────────────
 
 export interface GenerationVersion {
   id: string;
@@ -66,6 +81,8 @@ export interface GenerationVersion {
   render: RenderArtifact | null;
   createdAt: string;
 }
+
+// ─── Job Snapshot ──────────────────────────────────────────────
 
 export interface GenerationJobSnapshot {
   id: string;
@@ -89,6 +106,8 @@ export interface GenerationJobSnapshot {
   updatedAt: string;
 }
 
+// ─── Job Creation ──────────────────────────────────────────────
+
 export interface CreateGenerationJobInput {
   operation: GenerationOperation;
   mode: GenerationMode;
@@ -101,6 +120,8 @@ export interface CreateGenerationJobInput {
   format?: "mp4" | "gif";
 }
 
+// ─── User Actions ──────────────────────────────────────────────
+
 export type GenerationAction =
   | { type: "cancel" }
   | { type: "retry" }
@@ -108,6 +129,8 @@ export type GenerationAction =
   | { type: "save_manual_version"; code: string }
   | { type: "rollback"; versionId: string }
   | { type: "publish"; versionId: string };
+
+// ─── Events (discriminated union) ──────────────────────────────
 
 type GenerationEventData = {
   "job.accepted": { snapshot: GenerationJobSnapshot };

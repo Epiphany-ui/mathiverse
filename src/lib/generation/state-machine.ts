@@ -1,11 +1,12 @@
 import type {
-  CreateGenerationJobInput,
   GenerationEvent,
   GenerationJobSnapshot,
   GenerationPhase,
   GenerationStatus,
   GenerationVersion,
 } from "./types";
+
+// ─── Legal Phase Transitions ───────────────────────────────────
 
 const ALLOWED_NEXT: Record<GenerationPhase, readonly GenerationPhase[]> = {
   queued: ["planning", "validating", "repairing", "rendering"],
@@ -17,24 +18,45 @@ const ALLOWED_NEXT: Record<GenerationPhase, readonly GenerationPhase[]> = {
   repairing: ["validating"],
 };
 
-type InitialSnapshotInput = CreateGenerationJobInput & {
+export function assertPhaseTransition(
+  current: GenerationPhase,
+  next: GenerationPhase,
+): void {
+  if (!ALLOWED_NEXT[current].includes(next)) {
+    throw new Error(
+      `Illegal generation phase transition: ${current} -> ${next}`,
+    );
+  }
+}
+
+export function isTerminalStatus(status: GenerationStatus): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
+// ─── Snapshot Factory ──────────────────────────────────────────
+
+interface CreateSnapshotParams {
   id: string;
-  durability: GenerationJobSnapshot["durability"];
-};
+  operation: GenerationJobSnapshot["operation"];
+  mode: GenerationJobSnapshot["mode"];
+  prompt: string;
+  currentCode: string | null;
+  parentJobId: string | null;
+  durability: "persistent" | "session";
+}
 
 export function createInitialSnapshot(
-  input: InitialSnapshotInput,
+  params: CreateSnapshotParams,
 ): GenerationJobSnapshot {
   const now = new Date().toISOString();
-
   return {
-    id: input.id,
-    parentJobId: input.parentJobId,
-    operation: input.operation,
-    mode: input.mode,
+    id: params.id,
+    parentJobId: params.parentJobId,
+    operation: params.operation,
+    mode: params.mode,
     status: "queued",
     phase: "queued",
-    prompt: input.prompt,
+    prompt: params.prompt,
     scenePlan: null,
     currentVersion: null,
     versions: [],
@@ -44,112 +66,135 @@ export function createInitialSnapshot(
     runToken: 0,
     failureReason: null,
     cancelRequested: false,
-    durability: input.durability,
+    durability: params.durability,
     createdAt: now,
     updatedAt: now,
   };
 }
 
-export function assertPhaseTransition(
-  current: GenerationPhase,
-  next: GenerationPhase,
-): void {
-  if (!ALLOWED_NEXT[current].includes(next)) {
-    throw new Error(`Illegal generation phase transition: ${current} -> ${next}`);
-  }
-}
+// ─── Event Reducer ─────────────────────────────────────────────
 
-export function isTerminalStatus(status: GenerationStatus): boolean {
-  return status === "completed" || status === "failed" || status === "cancelled";
-}
-
-function replaceVersion(
-  versions: GenerationVersion[],
-  version: GenerationVersion,
-): GenerationVersion[] {
-  const index = versions.findIndex((candidate) => candidate.id === version.id);
-  if (index === -1) {
-    return [...versions, version];
-  }
-
-  return versions.map((candidate, candidateIndex) =>
-    candidateIndex === index ? version : candidate,
-  );
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unhandled generation event: ${JSON.stringify(value)}`);
-}
-
+/**
+ * Pure reducer: apply a GenerationEvent to a snapshot, returning a new snapshot.
+ * Exhaustive over all event types. Never adds a percentage field.
+ */
 export function applyGenerationEvent(
   snapshot: GenerationJobSnapshot,
   event: GenerationEvent,
 ): GenerationJobSnapshot {
+  const next = { ...snapshot, updatedAt: event.createdAt };
+
   switch (event.type) {
     case "job.accepted":
       return event.data.snapshot;
-    case "phase.changed":
+
+    case "phase.changed": {
       assertPhaseTransition(snapshot.phase, event.data.phase);
-      return {
-        ...snapshot,
-        phase: event.data.phase,
-        status: "running",
-        updatedAt: event.createdAt,
+      next.phase = event.data.phase;
+      next.status = "running";
+      return next;
+    }
+
+    case "plan.ready": {
+      next.scenePlan = event.data.plan;
+      return next;
+    }
+
+    case "code.delta": {
+      // code_delta updates editor draft only; does not create a version
+      return next;
+    }
+
+    case "version.created": {
+      const v = event.data.version;
+      // Replace version with same ID rather than duplicate
+      const existingIdx = next.versions.findIndex((x) => x.id === v.id);
+      if (existingIdx >= 0) {
+        next.versions = [
+          ...next.versions.slice(0, existingIdx),
+          v,
+          ...next.versions.slice(existingIdx + 1),
+        ];
+      } else {
+        next.versions = [...next.versions, v];
+      }
+      next.currentVersion = v;
+      next.validation = v.validation;
+      next.render = v.render;
+      return next;
+    }
+
+    case "validation.completed": {
+      next.validation = event.data;
+      return next;
+    }
+
+    case "render.started": {
+      // render.started is informational; no state change
+      return next;
+    }
+
+    case "render.completed": {
+      next.render = event.data.artifact;
+      if (next.currentVersion) {
+        const v = next.currentVersion;
+        const updated: GenerationVersion = {
+          ...v,
+          render: event.data.artifact,
+        };
+        next.currentVersion = updated;
+        next.versions = next.versions.map((x) =>
+          x.id === v.id ? updated : x,
+        );
+      }
+      return next;
+    }
+
+    case "render.failed": {
+      // failure info is in the event; mark validation with render issues
+      next.validation = {
+        valid: false,
+        sceneName: next.validation?.sceneName ?? null,
+        issues: [
+          ...(next.validation?.issues ?? []),
+          ...event.data.issues,
+        ],
       };
-    case "plan.ready":
-      return { ...snapshot, scenePlan: event.data.plan, updatedAt: event.createdAt };
-    case "code.delta":
-      return { ...snapshot, updatedAt: event.createdAt };
-    case "version.created":
-      return {
-        ...snapshot,
-        currentVersion: event.data.version,
-        versions: replaceVersion(snapshot.versions, event.data.version),
-        validation: event.data.version.validation,
-        render: event.data.version.render,
-        updatedAt: event.createdAt,
-      };
-    case "validation.completed":
-      return { ...snapshot, validation: event.data, updatedAt: event.createdAt };
-    case "render.started":
-      return { ...snapshot, updatedAt: event.createdAt };
-    case "render.completed":
-      return { ...snapshot, render: event.data.artifact, updatedAt: event.createdAt };
-    case "render.failed":
-      return { ...snapshot, updatedAt: event.createdAt };
-    case "repair.started":
-      return {
-        ...snapshot,
-        repairAttempt: event.data.attempt,
-        updatedAt: event.createdAt,
-      };
-    case "job.completed":
-      return {
-        ...snapshot,
-        status: "completed",
-        currentVersion:
-          snapshot.versions.find((version) => version.id === event.data.versionId) ??
-          snapshot.currentVersion,
-        render: event.data.render,
-        updatedAt: event.createdAt,
-      };
-    case "job.failed":
-      return {
-        ...snapshot,
-        status: "failed",
-        failureReason: event.data.reason,
-        updatedAt: event.createdAt,
-      };
-    case "job.cancelled":
-      return {
-        ...snapshot,
-        status: "cancelled",
-        currentVersion:
-          snapshot.versions.find((version) => version.id === event.data.versionId) ??
-          snapshot.currentVersion,
-        updatedAt: event.createdAt,
-      };
-    default:
-      return assertNever(event);
+      return next;
+    }
+
+    case "repair.started": {
+      next.repairAttempt = event.data.attempt;
+      return next;
+    }
+
+    case "job.completed": {
+      next.status = "completed";
+      next.currentVersion =
+        snapshot.versions.find((version) => version.id === event.data.versionId) ??
+        snapshot.currentVersion;
+      next.render = event.data.render;
+      return next;
+    }
+
+    case "job.failed": {
+      next.status = "failed";
+      next.failureReason = event.data.reason;
+      return next;
+    }
+
+    case "job.cancelled": {
+      next.status = "cancelled";
+      next.currentVersion =
+        snapshot.versions.find((version) => version.id === event.data.versionId) ??
+        snapshot.currentVersion;
+      return next;
+    }
+
+    default: {
+      // Exhaustiveness check — should never reach
+      const _exhaustive: never = event;
+      throw new Error("Unhandled generation event: " + JSON.stringify(_exhaustive));
+    }
   }
 }
