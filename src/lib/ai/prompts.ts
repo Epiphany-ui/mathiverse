@@ -6,6 +6,7 @@
  */
 
 import type { AIMessage } from "./client";
+import { VERIFIED_FALLBACK_EXAMPLES } from "./validated-examples";
 
 export const SYSTEM_PROMPT = `你是 Manim Community 动画专家。根据用户描述生成高质量 v0.19+ Python 代码。
 
@@ -677,7 +678,7 @@ class RotatingTorus(ThreeDScene):
  * Format retrieved examples for injection into the system prompt.
  */
 export function formatRetrievedExamples(
-  examples: { title: string; description: string; code: string }[],
+  examples: readonly { title: string; description: string; code: string }[],
 ): string {
   if (!examples.length) return "";
 
@@ -721,14 +722,7 @@ export async function buildMessages(
 
   if (!exampleSection) {
     // Static fallback: use a subset of existing few-shot examples
-    const codeExamples = FEW_SHOT_EXAMPLES
-      .filter((_, i) => i % 2 === 1) // assistant responses (odd indices)
-      .map((ex) => ({
-        title: "示例",
-        description: "",
-        code: ex.content,
-      }))
-      .slice(0, 3);
+    const codeExamples = VERIFIED_FALLBACK_EXAMPLES;
 
     exampleSection = `\n\n## 参考示例\n\n${formatRetrievedExamples(codeExamples)}`;
   }

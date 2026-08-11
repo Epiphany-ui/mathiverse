@@ -3,7 +3,81 @@
 
 import { embed, isOllamaRunning } from "./embedding";
 import { getAdminClient } from "@/lib/supabase/admin";
-import type { ManimExample } from "./types";
+import type { ManimExample, VerifiedManimExample } from "./types";
+import type { ScenePlan } from "@/lib/generation/types";
+
+export interface RetrievalOptions {
+  limit: number;
+  minSimilarity: number;
+  dimension: ScenePlan["layout"];
+  maxDifficulty: 1 | 2 | 3;
+  manimVersion: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+}
+
+interface VerifiedExampleRow {
+  id: string;
+  title: string;
+  description: string;
+  code: string;
+  tags: string[];
+  difficulty: number;
+  source?: string;
+  dimension: VerifiedManimExample["dimension"];
+  manim_version: string;
+  render_verified: boolean;
+  render_hash: string | null;
+  similarity: number;
+}
+
+export async function retrieveVerifiedExamples(
+  query: string,
+  options: RetrievalOptions,
+): Promise<VerifiedManimExample[]> {
+  const timeoutSignal = AbortSignal.timeout(options.timeoutMs);
+  const signal = options.signal
+    ? (AbortSignal as typeof AbortSignal & {
+        any(signals: AbortSignal[]): AbortSignal;
+      }).any([options.signal, timeoutSignal])
+    : timeoutSignal;
+  try {
+    const client = getAdminClient();
+    if (!client) return [];
+    const queryEmbedding = await embed(query, signal);
+    if (!queryEmbedding.length) return [];
+    // The generated Supabase schema does not include this migration until it is applied.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (client as any).rpc("match_verified_manim_examples", {
+      query_embedding: queryEmbedding,
+      match_count: Math.min(options.limit, 3),
+      match_threshold: options.minSimilarity,
+      dimension_filter: options.dimension,
+      max_difficulty: options.maxDifficulty,
+      manim_version_filter: options.manimVersion,
+    });
+    if (error) throw error;
+    return ((data ?? []) as VerifiedExampleRow[])
+      .filter((row) => row.render_verified && Boolean(row.render_hash))
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        code: row.code,
+        tags: row.tags,
+        difficulty: row.difficulty,
+        source: row.source,
+        similarity: row.similarity,
+        dimension: row.dimension,
+        manimVersion: row.manim_version,
+        renderVerified: row.render_verified,
+        renderHash: row.render_hash,
+      }));
+  } catch (error) {
+    console.warn("[retrieval] Verified retrieval unavailable:", error);
+    return [];
+  }
+}
 
 /**
  * Search manim_examples by cosine similarity to the query.
@@ -52,7 +126,12 @@ export async function retrieveExamples(
  * Returns the new row id, or null on failure.
  */
 export async function insertExample(
-  example: Omit<ManimExample, "id" | "similarity">,
+  example: Omit<ManimExample, "id" | "similarity"> & {
+    dimension?: VerifiedManimExample["dimension"];
+    manim_version?: string;
+    render_verified?: boolean;
+    render_hash?: string | null;
+  },
 ): Promise<string | null> {
   try {
     const ollamaUp = await isOllamaRunning();
@@ -95,8 +174,15 @@ export async function tryAutoIndex(params: {
   title: string;
   description?: string;
   tags?: string[];
+  verification?: {
+    renderVerified: true;
+    renderHash: string;
+    manimVersion: string;
+    dimension: VerifiedManimExample["dimension"];
+  };
 }): Promise<string | null> {
   try {
+    if (!params.verification?.renderVerified || !params.verification.renderHash) return null;
     // Only index if we have meaningful code
     if (!params.code || params.code.length < 50) return null;
     if (!params.code.includes("class ") || !params.code.includes("Scene")) return null;
@@ -112,6 +198,10 @@ export async function tryAutoIndex(params: {
       tags,
       difficulty: estimateDifficulty(params.code),
       source: "user-published",
+      dimension: params.verification.dimension,
+      manim_version: params.verification.manimVersion,
+      render_verified: true,
+      render_hash: params.verification.renderHash,
     });
   } catch {
     // Silently skip — indexing is best-effort

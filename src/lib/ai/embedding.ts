@@ -9,11 +9,12 @@ export const EMBED_MODEL =
 
 export const EMBED_DIMENSIONS = 1024;
 
-export async function embed(text: string): Promise<number[]> {
+export async function embed(text: string, signal?: AbortSignal): Promise<number[]> {
   const res = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, input: text }),
+    signal,
   });
 
   if (!res.ok) {
@@ -25,11 +26,12 @@ export async function embed(text: string): Promise<number[]> {
   return data.embeddings?.[0] ?? [];
 }
 
-export async function embedBatch(texts: string[]): Promise<number[][]> {
+export async function embedBatch(texts: string[], signal?: AbortSignal): Promise<number[][]> {
   const res = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
+    signal,
   });
 
   if (!res.ok) {

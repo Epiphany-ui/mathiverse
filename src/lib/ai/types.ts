@@ -11,6 +11,13 @@ export interface ManimExample {
   similarity?: number;
 }
 
+export interface VerifiedManimExample extends ManimExample {
+  dimension: "2d" | "3d" | "formula" | "mixed";
+  manimVersion: string;
+  renderVerified: boolean;
+  renderHash: string | null;
+}
+
 export interface EmbeddingResult {
   embedding: number[];
   model: string;

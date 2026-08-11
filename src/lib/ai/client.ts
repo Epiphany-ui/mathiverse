@@ -27,6 +27,7 @@ export interface ChatCompletionRequest {
   thinking?: { type: "enabled" | "disabled" };
   /** Reasoning depth — only meaningful when thinking is enabled. */
   reasoning_effort?: "low" | "high" | "max";
+  signal?: AbortSignal;
 }
 
 export interface ChatCompletionChunk {
@@ -54,7 +55,7 @@ function buildRequestBody(
     model: request.model ?? MODELS.code,
     messages: request.messages,
     stream,
-    max_tokens: request.max_tokens ?? 32768,
+    max_tokens: request.max_tokens ?? 8192,
   };
 
   // Only include temperature when thinking is disabled (it's ignored otherwise)
@@ -100,6 +101,7 @@ export async function chatCompletion(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify(buildRequestBody(request, false)),
+    signal: request.signal,
   });
 
   if (!res.ok) {
@@ -131,6 +133,7 @@ export async function chatCompletionStream(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify(buildRequestBody(request, true)),
+    signal: request.signal,
   });
 
   if (!res.ok) {

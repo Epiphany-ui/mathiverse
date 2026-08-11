@@ -13,7 +13,6 @@ import {
   uploadVideoToStorage,
 } from "@/lib/supabase/admin";
 import { isLocalRendererUrl } from "@/lib/utils";
-import { tryAutoIndex } from "@/lib/ai/retrieval";
 
 export const runtime = "nodejs";
 
@@ -159,19 +158,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Auto-index into RAG examples — fire-and-forget, never blocks response
-    if (sourceCode && typeof sourceCode === "string" && sourceCode.trim()) {
-      tryAutoIndex({
-        code: sourceCode,
-        title: title.trim(),
-        description: (description ?? "").trim(),
-        tags: cleanTags,
-      }).then((id) => {
-        if (id) {
-          console.log(`[visualizations] Auto-indexed example ${id}`);
-        }
-      });
-    }
+    // Publishing is independent from RAG indexing. A client payload is not
+    // trusted render evidence, so indexing is deferred to the generation
+    // service after it verifies the render artifact server-side.
 
     return NextResponse.json(
       { id: data.id, videoPersisted },
