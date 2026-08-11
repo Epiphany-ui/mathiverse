@@ -21,28 +21,26 @@ export function SearchContent() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (initialQuery) {
-      setQuery(initialQuery);
-      setInputValue(initialQuery);
-    }
-  }, [initialQuery]);
-
-  useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
+    if (!query.trim()) return;
+    let cancelled = false;
     const supabase = createClient();
     if (!supabase) return;
-    setLoading(true);
+    queueMicrotask(() => {
+      if (!cancelled) setLoading(true);
+    });
     searchContent(supabase, query).then((r) => {
+      if (cancelled) return;
       setResults(r);
       setLoading(false);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [query]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!inputValue.trim()) setResults([]);
     setQuery(inputValue);
   };
 
@@ -67,6 +65,7 @@ export function SearchContent() {
                 type="button"
                 onClick={() => {
                   setInputValue("");
+                  setResults([]);
                   setQuery("");
                 }}
                 className="absolute right-12 top-1/2 -translate-y-1/2"
@@ -88,7 +87,7 @@ export function SearchContent() {
         {query.trim() ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              搜索 "{query}" — 找到 {results.length} 个结果
+              搜索「{query}」— 找到 {results.length} 个结果
             </p>
             {loading ? (
               <div className="flex justify-center py-20">
@@ -101,7 +100,7 @@ export function SearchContent() {
                   没有找到相关内容
                 </p>
                 <p className="text-muted-foreground/60 text-sm mt-1">
-                  试试其他关键词，比如"傅里叶"、"梯度下降"
+                  试试其他关键词，比如「傅里叶」、「梯度下降」
                 </p>
               </div>
             ) : (

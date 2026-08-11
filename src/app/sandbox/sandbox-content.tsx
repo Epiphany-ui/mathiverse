@@ -9,6 +9,7 @@ import { PublishDialog } from "@/components/sandbox/publish-dialog";
 import { Button } from "@/components/ui/button";
 import { useChat } from "@/hooks/use-chat";
 import { createClient } from "@/lib/supabase/client";
+import { isLocalRendererUrl } from "@/lib/utils";
 import {
   Code2,
   Play,
@@ -38,6 +39,12 @@ class FirstScene(Scene):
 interface SandboxContentProps {
   forkId: string | null;
   initialPrompt: string;
+}
+
+function readLegacySandboxPayload() {
+  const code = localStorage.getItem("sandbox_code");
+  const prompt = localStorage.getItem("sandbox_prompt");
+  return { code, prompt };
 }
 
 export function SandboxContent({
@@ -74,30 +81,6 @@ export function SandboxContent({
     loadFork();
   }, [forkId]);
 
-  // Load code passed from wiki animation cards via localStorage (once)
-  const autoSentRef = useRef(false);
-  useEffect(() => {
-    if (forkId || initialPrompt) return; // Don't override fork or homepage prompt
-    if (autoSentRef.current) return;
-    try {
-      const storedCode = localStorage.getItem("sandbox_code");
-      const storedPrompt = localStorage.getItem("sandbox_prompt");
-      if (storedCode) {
-        setCode(storedCode);
-        localStorage.removeItem("sandbox_code");
-      }
-      if (storedPrompt && storedCode) {
-        localStorage.removeItem("sandbox_prompt");
-        autoSentRef.current = true;
-        // Delay to let ChatPanel mount and initialize
-        const timer = setTimeout(() => {
-          sendMessage(storedPrompt, storedCode, false);
-        }, 800);
-        return () => clearTimeout(timer);
-      }
-    } catch {}
-  }, [forkId, initialPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleCodeExtracted = useCallback((newCode: string) => {
     setCode(newCode);
   }, []);
@@ -107,6 +90,41 @@ export function SandboxContent({
       onCodeExtracted: handleCodeExtracted,
       onChangesApplied: (changes) => setPendingChanges(changes),
     });
+
+  // Load a legacy localStorage handoff once, after chat is initialized.
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    if (forkId || initialPrompt || autoSentRef.current) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const { code: storedCode, prompt: storedPrompt } =
+        readLegacySandboxPayload();
+      if (storedCode) localStorage.removeItem("sandbox_code");
+      if (storedPrompt && storedCode) {
+        localStorage.removeItem("sandbox_prompt");
+      }
+
+      queueMicrotask(() => {
+        if (cancelled || !storedCode) return;
+        setCode(storedCode);
+
+        if (storedPrompt) {
+          autoSentRef.current = true;
+          timer = setTimeout(() => {
+            if (!cancelled) sendMessage(storedPrompt, storedCode, false);
+          }, 800);
+        }
+      });
+    } catch {}
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [forkId, initialPrompt, sendMessage]);
 
   // Wrap sendMessage to always pass current code
   const handleSend = useCallback(
@@ -277,10 +295,17 @@ export function SandboxContent({
                   渲染预览
                 </div>
                 <video
-                  src={videoUrl}
+                  src={isLocalRendererUrl(videoUrl) ? `/api/video-proxy?url=${encodeURIComponent(videoUrl!)}` : videoUrl}
                   controls
                   className="w-full rounded-md max-h-[200px] bg-black"
-                  poster={undefined}
+                  onError={(e) => {
+                    const video = e.currentTarget;
+                    if (video.error) {
+                      const codes = ["", "加载中止", "网络错误", "解码失败", "格式不支持"];
+                      const msg = codes[video.error.code] ?? "视频加载失败";
+                      video.parentElement?.setAttribute("data-error", msg);
+                    }
+                  }}
                 >
                   你的浏览器不支持视频播放
                 </video>

@@ -5,16 +5,14 @@ import {
   useEffect,
   useRef,
   useCallback,
-  type FormEvent,
 } from "react";
-import { X, Sparkles, Play, Wand2, Send } from "lucide-react";
+import { X, Play, Wand2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/sandbox/chat-panel";
 import { CodeEditor } from "@/components/sandbox/code-editor";
 import { PublishDialog } from "@/components/sandbox/publish-dialog";
 import { useChat } from "@/hooks/use-chat";
 import { cn } from "@/lib/utils";
-import type { ChatMessage } from "@/types";
 
 interface MiniSandboxProps {
   open: boolean;
@@ -30,7 +28,6 @@ export function MiniSandbox({
   open,
   initialPrompt,
   wikiTitle,
-  wikiSlug,
   onClose,
 }: MiniSandboxProps) {
   const [code, setCode] = useState(
@@ -60,6 +57,17 @@ class ${toClassName(wikiTitle)}(Scene):
     onChangesApplied: (changes) => setPendingChanges(changes),
   });
 
+  const resetAndClose = useCallback(() => {
+    abortRef.current?.abort();
+    setRenderStatus("idle");
+    setRenderError("");
+    setVideoUrl(null);
+    setShowPublish(false);
+    setPendingChanges(null);
+    clearMessages();
+    onClose();
+  }, [clearMessages, onClose]);
+
   // Auto-send prompt on open
   useEffect(() => {
     if (!open || !initialPrompt) return;
@@ -70,18 +78,6 @@ class ${toClassName(wikiTitle)}(Scene):
 
     return () => clearTimeout(timer);
   }, [open, initialPrompt, code, sendMessage]);
-
-  // Reset on close
-  useEffect(() => {
-    if (!open) {
-      setRenderStatus("idle");
-      setRenderError("");
-      setVideoUrl(null);
-      setShowPublish(false);
-      setPendingChanges(null);
-      clearMessages();
-    }
-  }, [open, clearMessages]);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -98,11 +94,11 @@ class ${toClassName(wikiTitle)}(Scene):
   // Escape to close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") resetAndClose();
     };
     if (open) document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, resetAndClose]);
 
   const handleRender = useCallback(async () => {
     if (renderStatus === "rendering") return;
@@ -140,11 +136,6 @@ class ${toClassName(wikiTitle)}(Scene):
     }
   }, [code, renderStatus]);
 
-  const handleCancelRender = () => {
-    abortRef.current?.abort();
-    setRenderStatus("idle");
-  };
-
   const handleAIFix = () => {
     if (!renderError) return;
     setRenderStatus("idle");
@@ -157,7 +148,7 @@ class ${toClassName(wikiTitle)}(Scene):
       {open && (
         <div
           className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px]"
-          onClick={onClose}
+          onClick={resetAndClose}
         />
       )}
 
@@ -183,7 +174,7 @@ class ${toClassName(wikiTitle)}(Scene):
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={onClose}
+            onClick={resetAndClose}
           >
             <X className="w-4 h-4" />
           </Button>

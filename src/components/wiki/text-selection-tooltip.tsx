@@ -80,7 +80,7 @@ export function TextSelectionTooltip({
       setPos({ x, y });
       setVisible(true);
     });
-  }, []);
+  }, [containerRef]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -125,7 +125,7 @@ export function TextSelectionTooltip({
       >
         <Sparkles className="w-3.5 h-3.5 text-[#cc785c]" />
         <span className="max-w-[180px] truncate text-[#6c6a64]">
-          "{text}"
+          「{text}」
         </span>
         <span className="text-[#cc785c] font-medium">生成动画</span>
       </button>

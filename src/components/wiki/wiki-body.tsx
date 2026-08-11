@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { MarkdownRenderer } from "@/components/content/markdown-renderer";
 import { TextSelectionTooltip } from "./text-selection-tooltip";
@@ -15,20 +15,52 @@ interface WikiBodyProps {
 interface CardInstance {
   id: string;
   prompt: string;
-  /** DOM node right after the selection — card portals here */
+  container: HTMLDivElement | null;
+}
+
+interface CardRequest {
+  id: string;
+  prompt: string;
   anchor: Node | null;
 }
 
 export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [cards, setCards] = useState<CardInstance[]>([]);
+  // Track portal containers — created once, cleaned up on removal
+  const containersRef = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  const addCard = useCallback((card: CardInstance) => {
-    setCards((prev) => [...prev, card]);
+  const addCard = useCallback((card: CardRequest) => {
+    let container: HTMLDivElement | null = null;
+    if (card.anchor?.parentNode) {
+      container = document.createElement("div");
+      container.className = "my-6";
+      card.anchor.parentNode.insertBefore(container, card.anchor.nextSibling);
+      containersRef.current.set(card.id, container);
+    }
+    setCards((prev) => [
+      ...prev,
+      { id: card.id, prompt: card.prompt, container },
+    ]);
   }, []);
 
   const removeCard = useCallback((id: string) => {
+    // Remove the portal container from DOM
+    const container = containersRef.current.get(id);
+    if (container) {
+      container.remove();
+      containersRef.current.delete(id);
+    }
     setCards((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    const containers = containersRef.current;
+    return () => {
+      containers.forEach((container) => container.remove());
+      containers.clear();
+    };
   }, []);
 
   return (
@@ -37,16 +69,15 @@ export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
         <MarkdownRenderer content={bodyMd} />
       </div>
 
-      {/* Inline animation cards — portaled to their anchor positions */}
       {cards.map((card) => {
-        if (!card.anchor || !card.anchor.parentNode) {
-          // Fallback: render at bottom
+        if (!card.container) {
           return (
             <div key={card.id} className="my-4">
               <p className="text-xs text-[#6c6a64] mb-2 italic">
-                为 "{card.prompt.slice(0, 60)}{card.prompt.length > 60 ? "..." : ""}" 生成动画
+                为「{card.prompt.slice(0, 60)}{card.prompt.length > 60 ? "..." : ""}」生成动画
               </p>
               <AnimationCard
+                key={card.id}
                 prompt={card.prompt}
                 wikiTitle={title}
                 wikiSlug={slug}
@@ -56,27 +87,20 @@ export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
           );
         }
 
-        // Portal card right after the selection anchor
-        const container = document.createElement("div");
-        container.className = "my-6";
-        card.anchor.parentNode.insertBefore(container, card.anchor.nextSibling);
-
         return createPortal(
           <div>
             <p className="text-xs text-[#6c6a64] mb-2 italic">
-              为 "{card.prompt.slice(0, 60)}{card.prompt.length > 60 ? "..." : ""}" 生成动画
+              为「{card.prompt.slice(0, 60)}{card.prompt.length > 60 ? "..." : ""}」生成动画
             </p>
             <AnimationCard
+              key={card.id}
               prompt={card.prompt}
               wikiTitle={title}
               wikiSlug={slug}
-              onRemove={() => {
-                container.remove();
-                removeCard(card.id);
-              }}
+              onRemove={() => removeCard(card.id)}
             />
           </div>,
-          container,
+          card.container,
         );
       })}
 

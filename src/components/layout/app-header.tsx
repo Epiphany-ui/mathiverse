@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,21 +16,23 @@ import {
   Search,
   Sparkles,
   Compass,
+  BookOpen,
   User,
   LogIn,
   Menu,
   LogOut,
   Settings,
-  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { NotificationDropdown } from "@/components/layout/notification-dropdown";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { isGalleryHeaderScrolled } from "@/components/home/home-data";
 
 const NAV_ITEMS = [
   { href: "/explore", label: "发现", icon: Compass },
+  { href: "/wiki", label: "百科", icon: BookOpen },
   { href: "/sandbox", label: "创作", icon: Sparkles },
 ] as const;
 
@@ -45,6 +47,17 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+
+  const fetchUnreadCount = useCallback(async (userId: string) => {
+    const supabase = createClient();
+    if (!supabase) return;
+    const { count } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_read", false);
+    setUnreadCount(count ?? 0);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => {
@@ -84,18 +97,7 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
     );
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchUnreadCount = async (userId: string) => {
-    const supabase = createClient();
-    if (!supabase) return;
-    const { count } = await supabase
-      .from("notifications")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("is_read", false);
-    setUnreadCount(count ?? 0);
-  };
+  }, [fetchUnreadCount]);
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -197,29 +199,19 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
         <div className="flex items-center gap-2">
           {/* Notification bell — only when logged in */}
           {user && (
-            <Link href="/settings">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "relative h-9 w-9",
-                  galleryAtTop && "text-[#f2f3ed]",
-                )}
-                title="通知"
-              >
-                <Bell className="w-4 h-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#c64545] text-white text-[10px] font-bold flex items-center justify-center animate-heart-burst">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </Button>
-            </Link>
+            <NotificationDropdown
+              unreadCount={unreadCount}
+              onUnreadCountChange={setUnreadCount}
+              className={galleryAtTop ? "text-[#f2f3ed]" : undefined}
+            />
           )}
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger>
                 <Avatar className="w-8 h-8 cursor-pointer">
+                  {user.user_metadata?.avatar_url ? (
+                    <AvatarImage src={user.user_metadata.avatar_url} alt="" />
+                  ) : null}
                   <AvatarFallback className="bg-[#cc785c] text-white text-xs">
                     {user.email?.slice(0, 2).toUpperCase() || "?"}
                   </AvatarFallback>

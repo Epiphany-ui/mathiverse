@@ -19,10 +19,17 @@ export function useAuth(): AuthState & { signOut: () => Promise<void> } {
   });
 
   useEffect(() => {
+    let cancelled = false;
     const supabase = createClient();
     if (!supabase) {
-      setState({ user: null, profile: null, loading: false });
-      return;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setState({ user: null, profile: null, loading: false });
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
     }
 
     // Get initial session

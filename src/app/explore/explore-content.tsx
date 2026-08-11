@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
 import { FeedGrid } from "@/components/community/feed-grid";
 import { TagBadge } from "@/components/content/tag-badge";
 import { Button } from "@/components/ui/button";
-import { Compass, TrendingUp, Clock, X } from "lucide-react";
+import { Compass, TrendingUp, Clock, Users, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { buildFeedItems } from "@/lib/db/queries";
 import type { FeedSort, FeedItem } from "@/types";
@@ -25,15 +25,31 @@ export function ExploreContent() {
   const [activeTag, setActiveTag] = useState(initialTag);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(false);
 
+  // Check auth state once on mount
   useEffect(() => {
     const supabase = createClient();
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
+    if (!supabase) return;
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setLoggedIn(!!user);
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const supabase = createClient();
+    if (!supabase) {
+      queueMicrotask(() => {
+        if (!cancelled) setLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    queueMicrotask(() => {
+      if (!cancelled) setLoading(true);
+    });
     buildFeedItems(supabase, sort)
       .then((all) => {
         if (cancelled) return;
@@ -43,7 +59,7 @@ export function ExploreContent() {
             item.tags.some((t) => t.toLowerCase() === activeTag.toLowerCase()),
           )
           .sort((a, b) => {
-            if (sort === "new") {
+            if (sort === "new" || sort === "followed") {
               return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             }
             return b.likesCount + b.commentsCount * 2 - (a.likesCount + a.commentsCount * 2);
@@ -52,6 +68,7 @@ export function ExploreContent() {
       } else {
         setItems(all);
       }
+      setLoading(false);
       })
       .catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -95,6 +112,17 @@ export function ExploreContent() {
             <Clock className="w-4 h-4" />
             最新
           </Button>
+          {loggedIn && (
+            <Button
+              variant={sort === "followed" ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setSort("followed")}
+            >
+              <Users className="w-4 h-4" />
+              关注
+            </Button>
+          )}
 
           {activeTag && (
             <Button
@@ -140,6 +168,17 @@ export function ExploreContent() {
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sort === "followed" && !loggedIn ? (
+          <div className="text-center py-20 space-y-3">
+            <Users className="w-12 h-12 text-muted-foreground/40 mx-auto" />
+            <p className="text-muted-foreground">登录后查看关注动态</p>
+            <a
+              href="/auth/login?redirect=/explore"
+              className="inline-block text-sm text-primary hover:underline"
+            >
+              去登录
+            </a>
           </div>
         ) : (
           <FeedGrid items={items} />

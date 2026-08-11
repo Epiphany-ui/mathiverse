@@ -28,10 +28,9 @@ export function LikeButton({
   const [localCount, setLocalCount] = useState(count);
   const [animating, setAnimating] = useState(false);
   const [burst, setBurst] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
   const inFlightRef = useRef(false);
+  const [isPending, setIsPending] = useState(false);
   const lastServerCount = useRef(count);
-  const initDoneRef = useRef(false);
 
   // Sync localCount only when server count genuinely changes (not after our own mutations)
   useEffect(() => {
@@ -53,11 +52,9 @@ export function LikeButton({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || cancelled) return;
 
-      setUserId(user.id);
       const liked = await getLikeState(supabase, user.id, targetType, targetId);
       if (!cancelled) {
         setIsLiked(liked);
-        initDoneRef.current = true;
       }
     };
     init();
@@ -67,41 +64,42 @@ export function LikeButton({
   const handleClick = useCallback(async () => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
+    setIsPending(true);
 
-    const supabase = createClient();
-    if (!supabase) { inFlightRef.current = false; return; }
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        window.location.href =
+          `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        return;
+      }
+
+      const wasLiked = isLiked;
+      setIsLiked(!wasLiked);
+      setLocalCount((current) => current + (wasLiked ? -1 : 1));
+      setAnimating(true);
+      if (!wasLiked) setBurst(true);
+      setTimeout(() => setAnimating(false), 400);
+      setTimeout(() => setBurst(false), 500);
+
+      const result = wasLiked
+        ? await removeLike(supabase, user.id, targetType, targetId)
+        : await addLike(supabase, user.id, targetType, targetId);
+
+      if (result.error) {
+        setIsLiked(wasLiked);
+        setLocalCount((current) => current + (wasLiked ? 1 : -1));
+      }
+    } finally {
       inFlightRef.current = false;
-      window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
-      return;
+      setIsPending(false);
     }
-
-    const wasLiked = isLiked;
-
-    // Optimistic update
-    setIsLiked(!wasLiked);
-    setLocalCount((c) => c + (wasLiked ? -1 : 1));
-    setAnimating(true);
-    if (!wasLiked) setBurst(true);
-    setTimeout(() => setAnimating(false), 400);
-    setTimeout(() => setBurst(false), 500);
-
-    // Persist
-    const result = wasLiked
-      ? await removeLike(supabase, user.id, targetType, targetId)
-      : await addLike(supabase, user.id, targetType, targetId);
-
-    if (result.error) {
-      // Revert on error
-      setIsLiked(wasLiked);
-      setLocalCount((c) => c + (wasLiked ? 1 : -1));
-    }
-    // Don't touch lastServerCount — let the effect detect genuine server changes only
-
-    inFlightRef.current = false;
-  }, [isLiked, count, targetType, targetId]);
+  }, [isLiked, targetId, targetType]);
 
   return (
     <Button
@@ -109,7 +107,7 @@ export function LikeButton({
       size="sm"
       className={cn("gap-1.5 group relative btn-press", className)}
       onClick={handleClick}
-      disabled={inFlightRef.current}
+      disabled={isPending}
     >
       {burst && (
         <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-heart-ring pointer-events-none" />
