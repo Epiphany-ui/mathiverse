@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { LikeButton } from "@/components/shared/like-button";
@@ -24,7 +24,7 @@ function timeAgo(dateStr: string): string {
 
 interface CommentItemProps {
   comment: Comment;
-  targetType: "visualization" | "article";
+  targetType: "visualization" | "article" | "wiki";
   targetId: string;
   depth?: number;
   onReplyAdded?: () => void;
@@ -40,6 +40,7 @@ function CommentItem({
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   const handleReply = useCallback(async () => {
     if (!replyText.trim() || submitting) return;
@@ -54,6 +55,8 @@ function CommentItem({
     }
 
     setSubmitting(true);
+    setReplyError(null);
+    try {
     const result = await addComment(supabase, {
       body: replyText.trim(),
       authorId: user.id,
@@ -67,7 +70,16 @@ function CommentItem({
     if (result.data) {
       setReplyText("");
       setShowReply(false);
+      setReplyError(null);
       onReplyAdded?.();
+    } else if (result.error) {
+      setReplyError(result.error);
+    }
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "回复发表失败，请稍后重试";
+      setSubmitting(false);
+      setReplyError(message);
     }
   }, [replyText, submitting, targetType, targetId, comment.id, onReplyAdded]);
 
@@ -75,6 +87,9 @@ function CommentItem({
     <div className={`${depth > 0 ? "ml-10 border-l-2 border-border/30 pl-4" : ""}`}>
       <div className="flex gap-3 py-3">
         <Avatar className="w-8 h-8 shrink-0">
+          {comment.author?.avatarUrl ? (
+            <AvatarImage src={comment.author.avatarUrl} alt="" />
+          ) : null}
           <AvatarFallback className="text-xs bg-[#cc785c] text-white">
             {comment.author?.displayName?.slice(0, 1) ?? "?"}
           </AvatarFallback>
@@ -120,6 +135,9 @@ function CommentItem({
                 onChange={(e) => setReplyText(e.target.value)}
                 autoFocus
               />
+              {replyError && (
+                <p className="text-xs text-red-500">{replyError}</p>
+              )}
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -166,7 +184,7 @@ function CommentItem({
 
 interface CommentListProps {
   comments: Comment[];
-  targetType: "visualization" | "article";
+  targetType: "visualization" | "article" | "wiki";
   targetId: string;
 }
 
@@ -178,7 +196,8 @@ export function CommentList({
   const [newComment, setNewComment] = useState("");
   const [localComments, setLocalComments] = useState(comments);
   const [submitting, setSubmitting] = useState(false);
-  const prevTargetRef = React.useRef(targetId);
+  const [error, setError] = useState<string | null>(null);
+  const prevTargetRef = useRef(targetId);
 
   // Sync when props change (navigation to a different page)
   useEffect(() => {
@@ -201,6 +220,8 @@ export function CommentList({
     }
 
     setSubmitting(true);
+    setError(null);
+    try {
     const result = await addComment(supabase, {
       body: newComment.trim(),
       authorId: user.id,
@@ -209,6 +230,7 @@ export function CommentList({
     });
 
     if (result.data) {
+      setError(null);
       // Transform the Supabase row to our Comment type
       const newCommentObj: Comment = {
         id: result.data.id,
@@ -233,6 +255,13 @@ export function CommentList({
 
       setLocalComments([newCommentObj, ...localComments]);
       setNewComment("");
+    } else if (result.error) {
+      setError(result.error);
+    }
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "评论发表失败，请稍后重试";
+      setError(message);
     }
 
     setSubmitting(false);
@@ -252,6 +281,9 @@ export function CommentList({
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
         />
+        {error && (
+          <p className="text-xs text-red-500">{error}</p>
+        )}
         <Button
           size="sm"
           onClick={handleAdd}

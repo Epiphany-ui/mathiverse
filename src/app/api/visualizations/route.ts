@@ -12,19 +12,12 @@ import {
   ensureStorageBucket,
   uploadVideoToStorage,
 } from "@/lib/supabase/admin";
+import { isLocalRendererUrl } from "@/lib/utils";
 import { tryAutoIndex } from "@/lib/ai/retrieval";
 
 export const runtime = "nodejs";
 
 const STORAGE_BUCKET = "renders";
-
-/**
- * Detect if a video URL is a local renderer URL that needs to be
- * migrated to Supabase Storage.
- */
-function isLocalRendererUrl(url: string): boolean {
-  return /^https?:\/\/(127\.0\.0\.1|localhost):9876\//.test(url);
-}
 
 /**
  * Fetch the video from the local renderer and upload to Supabase Storage.
@@ -116,7 +109,10 @@ export async function POST(request: NextRequest) {
 
     // Ensure tags is an array of strings
     const cleanTags = Array.isArray(tags)
-      ? tags.filter((t: any) => typeof t === "string" && t.trim())
+      ? tags.filter(
+          (tag: unknown): tag is string =>
+            typeof tag === "string" && tag.trim().length > 0,
+        )
       : [];
 
     // If the video is from the local renderer, upload it to Supabase Storage
