@@ -172,7 +172,7 @@ export async function getArticleById(
 
 export async function getCommentsForTarget(
   client: any,
-  targetType: "visualization" | "article",
+  targetType: "visualization" | "article" | "wiki",
   targetId: string,
 ): Promise<Comment[]> {
   const { data, error } = await client
