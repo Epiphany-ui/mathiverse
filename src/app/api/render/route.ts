@@ -7,7 +7,12 @@
  * Proxies to the local Python FastAPI renderer at NEXT_PUBLIC_RENDERER_URL.
  */
 
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  createRendererClient,
+  RendererError,
+} from "@/lib/generation/renderer-client";
 
 export const runtime = "nodejs";
 
@@ -20,7 +25,11 @@ function jsonResponse(data: unknown, status = 200) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = (await request.json()) as {
+      code?: unknown;
+      quality?: unknown;
+      format?: unknown;
+    };
     const { code, quality = "-ql", format = "mp4" } = body;
 
     if (!code || typeof code !== "string") {
@@ -30,23 +39,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const res = await fetch(`${RENDERER_URL}/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, quality, format }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      return jsonResponse(
-        { error: `渲染失败: ${err}` },
-        502,
-      );
+    if (!["-ql", "-qm", "-qh"].includes(String(quality))) {
+      return jsonResponse({ error: "不支持的渲染质量" }, 400);
+    }
+    if (format !== "mp4" && format !== "gif") {
+      return jsonResponse({ error: "不支持的输出格式" }, 400);
     }
 
-    const data = await res.json();
-    return jsonResponse(data);
+    const artifact = await createRendererClient().renderManim({
+      code,
+      quality: quality as "-ql" | "-qm" | "-qh",
+      format,
+      requestId: randomUUID(),
+      signal: request.signal,
+    });
+    return jsonResponse({
+      success: true,
+      video_url: artifact.format === "mp4" ? artifact.url : null,
+      gif_url: artifact.format === "gif" ? artifact.url : null,
+      duration: artifact.duration,
+    });
   } catch (error) {
+    if (error instanceof RendererError) {
+      return jsonResponse(
+        { error: error.message, diagnostics: error.issues },
+        error.status >= 400 && error.status < 600 ? error.status : 503,
+      );
+    }
     return jsonResponse(
       {
         error:
