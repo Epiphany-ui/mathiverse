@@ -85,7 +85,7 @@ export const comments = pgTable(
   (table) => [
     check(
       "target_type_check",
-      sql`${table.targetType} IN ('visualization', 'article')`,
+      sql`${table.targetType} IN ('visualization', 'article', 'wiki')`,
     ),
   ],
 );

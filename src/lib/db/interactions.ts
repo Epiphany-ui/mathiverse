@@ -180,7 +180,7 @@ export async function addComment(
   params: {
     body: string;
     authorId: string;
-    targetType: "visualization" | "article";
+    targetType: "visualization" | "article" | "wiki";
     targetId: string;
     parentId?: string | null;
   },

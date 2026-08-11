@@ -60,7 +60,7 @@ export interface Comment {
   id: string;
   body: string;
   authorId: string;
-  targetType: "visualization" | "article";
+  targetType: "visualization" | "article" | "wiki";
   targetId: string;
   parentId: string | null;
   likesCount: number;
