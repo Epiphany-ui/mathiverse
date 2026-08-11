@@ -38,10 +38,14 @@ export function ExhibitionIndex({
   const nextItem = itemAt(features, nextPos);
   const communityItem = itemAt(features, communityPos);
 
+  const pad = (n: number) => String(n).padStart(2, "0");
+
   return (
     <section className={styles.exhibitionIndex} aria-label="展览索引">
       <div className={styles.indexEntry}>
-        <span className={styles.monoLabel}>NOW SHOWING / 01</span>
+        <span className={styles.monoLabel}>
+          NOW SHOWING / {pad(nowShowingPos)}
+        </span>
         {nowItem ? (
           <Link className={styles.indexLink} href={itemHref(nowItem)}>
             {nowItem.title}
@@ -51,7 +55,9 @@ export function ExhibitionIndex({
         )}
       </div>
       <div className={styles.indexEntry}>
-        <span className={styles.monoLabel}>NEXT / 02</span>
+        <span className={styles.monoLabel}>
+          NEXT / {pad(nextPos)}
+        </span>
         {nextItem ? (
           <Link className={styles.indexLink} href={itemHref(nextItem)}>
             {nextItem.title}
