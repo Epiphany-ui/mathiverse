@@ -16,6 +16,18 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## AI Studio verification
+
+Run unit, renderer, type, lint, and production-build gates with `pnpm check`.
+Run the five-viewport browser suite with `pnpm test:e2e`. Run a live,
+opt-in generation smoke test with:
+
+```bash
+GENERATION_SMOKE_BASE_URL=http://127.0.0.1:3000 node scripts/verify-generation-flow.mjs
+```
+
+Without `GENERATION_SMOKE_BASE_URL` the smoke test skips locally and fails in CI, where an explicit target is required.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -2,6 +2,16 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  workers: 1,
+  webServer: {
+    command: "NEXT_PUBLIC_SUPABASE_URL=your_supabase_url pnpm dev --hostname 127.0.0.1",
+    url: "http://127.0.0.1:3000",
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
+  use: {
+    baseURL: "http://127.0.0.1:3000",
+  },
   projects: [
     {
       name: "mobile-portrait",
