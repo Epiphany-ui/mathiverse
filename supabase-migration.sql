@@ -174,11 +174,12 @@ CREATE POLICY "tags_read_all" ON tags FOR SELECT USING (true);
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, display_name)
+  INSERT INTO public.profiles (id, username, display_name, avatar_url)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data ->> 'username', 'user_' || substring(NEW.id::text from 1 for 8)),
-    COALESCE(NEW.raw_user_meta_data ->> 'display_name', 'User')
+    COALESCE(NEW.raw_user_meta_data ->> 'display_name', 'User'),
+    NEW.raw_user_meta_data ->> 'avatar_url'
   );
   RETURN NEW;
 END;

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Square, ExternalLink, RefreshCw } from "lucide-react";
+import { Play, Square, ExternalLink, RefreshCw, AlertCircle } from "lucide-react";
+import { isLocalRendererUrl } from "@/lib/utils";
 
 /* ─── Progress Stages ─── */
 
@@ -35,6 +36,7 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
   const [cardState, setCardState] = useState<CardState>("generating");
   const [stage, setStage] = useState<CardStage>("understanding");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState(false);
   const [error, setError] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
   const [stageIndex, setStageIndex] = useState(0);
@@ -269,18 +271,25 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
       {/* ── Done State ── */}
       {cardState === "done" && videoUrl && (
         <div className="space-y-3">
+          {videoError ? (
+            <div className="rounded-lg bg-[#f5f2ed] border border-[#e6dfd8] flex flex-col items-center justify-center gap-2 py-8">
+              <AlertCircle className="w-6 h-6 text-[#cc785c]/40" />
+              <p className="text-xs text-[#6c6a64]">视频文件已过期，请在沙箱中重新渲染</p>
+            </div>
+          ) : (
           <div
             className="relative rounded-lg overflow-hidden bg-black cursor-pointer"
             onClick={togglePause}
           >
             <video
               ref={videoRef}
-              src={videoUrl}
+              src={isLocalRendererUrl(videoUrl) ? `/api/video-proxy?url=${encodeURIComponent(videoUrl)}` : videoUrl}
               autoPlay
               loop
               muted
               playsInline
               className="w-full max-h-[300px] object-contain"
+              onError={() => setVideoError(true)}
             />
             {isPaused && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -288,6 +297,7 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
               </div>
             )}
           </div>
+          )}
 
           <div className="flex items-center gap-3 text-sm">
             <span className="text-[#5db8a6]">(◕‿◕) 完成啦！</span>

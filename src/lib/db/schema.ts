@@ -8,6 +8,9 @@ import {
   timestamp,
   primaryKey,
   check,
+  doublePrecision,
+  smallint,
+  unique,
 } from "drizzle-orm/pg-core";
 
 /* ─── Profiles (extends Supabase auth.users) ─── */
@@ -105,7 +108,7 @@ export const likes = pgTable(
     primaryKey({ columns: [table.userId, table.targetType, table.targetId] }),
     check(
       "target_type_check",
-      sql`${table.targetType} IN ('visualization', 'article', 'comment')`,
+      sql`${table.targetType} IN ('visualization', 'article', 'comment', 'wiki')`,
     ),
   ],
 );
@@ -125,7 +128,7 @@ export const bookmarks = pgTable(
     primaryKey({ columns: [table.userId, table.targetType, table.targetId] }),
     check(
       "target_type_check",
-      sql`${table.targetType} IN ('visualization', 'article')`,
+      sql`${table.targetType} IN ('visualization', 'article', 'wiki')`,
     ),
   ],
 );
@@ -150,3 +153,95 @@ export const tags = pgTable("tags", {
   name: text("name").primaryKey(),
   usageCount: integer("usage_count").default(0),
 });
+
+/* ─── Wiki Entries ─── */
+export const wikiEntries = pgTable("wiki_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").unique().notNull(),
+  title: text("title").notNull(),
+  category: text("category").notNull(),
+  summary: text("summary").notNull().default(""),
+  bodyMd: text("body_md").notNull(),
+  coverUrl: text("cover_url"),
+  tags: text("tags").array().default([]),
+  wikipediaTitle: text("wikipedia_title"),
+  wikipediaUrl: text("wikipedia_url"),
+  likesCount: integer("likes_count").default(0),
+  commentsCount: integer("comments_count").default(0),
+  viewsCount: integer("views_count").default(0),
+  isPublished: boolean("is_published").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+},
+(table) => [
+  check(
+    "category_check",
+    sql`${table.category} IN ('pure-math', 'applied-math', 'cs-overlap')`,
+  ),
+]);
+
+/* ─── Wiki Edges (knowledge graph) ─── */
+export const wikiEdges = pgTable("wiki_edges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceId: uuid("source_id")
+    .notNull()
+    .references(() => wikiEntries.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id")
+    .notNull()
+    .references(() => wikiEntries.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  strength: doublePrecision("strength").notNull().default(1.0),
+  createdAt: timestamp("created_at").defaultNow(),
+},
+(table) => [
+  check(
+    "strength_check",
+    sql`${table.strength} >= 0 AND ${table.strength} <= 1`,
+  ),
+  unique().on(table.sourceId, table.targetId),
+]);
+
+/* ─── Manim Examples (RAG vector store) ─── */
+export const manimExamples = pgTable("manim_examples", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  code: text("code").notNull(),
+  tags: text("tags").array().default([]),
+  difficulty: smallint("difficulty").default(1),
+  source: text("source").default("manual"),
+  embedding: text("embedding"), // vector(1024) stored as pgvector literal
+  createdAt: timestamp("created_at").defaultNow(),
+},
+(table) => [
+  check(
+    "difficulty_check",
+    sql`${table.difficulty} BETWEEN 1 AND 3`,
+  ),
+]);
+
+/* ─── Notifications ─── */
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  actorId: uuid("actor_id")
+    .notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  targetType: text("target_type"),
+  targetId: uuid("target_id"),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+},
+(table) => [
+  check(
+    "type_check",
+    sql`${table.type} IN ('like', 'comment', 'follow', 'fork')`,
+  ),
+  check(
+    "target_type_check",
+    sql`${table.targetType} IN ('visualization', 'article', 'comment')`,
+  ),
+]);

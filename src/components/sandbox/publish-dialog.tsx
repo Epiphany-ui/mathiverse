@@ -36,8 +36,11 @@ export function PublishDialog({
     if (!open) return;
 
     let cancelled = false;
-    setGeneratingMeta(true);
-    setError("");
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setGeneratingMeta(true);
+      setError("");
+    });
 
     const generate = async () => {
       try {
@@ -101,8 +104,8 @@ export function PublishDialog({
       }
 
       window.location.href = `/v/${data.id}`;
-    } catch (err: any) {
-      setError(err.message ?? "发布失败");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "发布失败");
       setPublishing(false);
     }
   };

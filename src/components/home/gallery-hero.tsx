@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { FeedItem } from "@/types";
 import {
@@ -11,18 +11,32 @@ import {
 import { MathematicalFallback } from "./mathematical-fallback";
 import styles from "./home-gallery.module.css";
 
+const AUTOPLAY_INTERVAL = 8000; // 8s per slide
+
 interface GalleryHeroProps {
-  feature: FeedItem | null;
+  features: FeedItem[];
+  currentIndex: number;
+  onIndexChange: (index: number) => void;
 }
 
-export function GalleryHero({ feature }: GalleryHeroProps) {
+export function GalleryHero({
+  features,
+  currentIndex,
+  onIndexChange,
+}: GalleryHeroProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const startupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoplayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [reducedMotion, setReducedMotion] = useState<boolean | null>(null);
   const [mediaState, dispatchMedia] = useReducer(
     galleryMediaReducer,
     "checking",
   );
+
+  // Carousel: index 0 = fallback animation (cover, no text), 1+ = actual features
+  const slides = [null, ...features];
+  const totalSlides = slides.length;
+  const feature = slides[currentIndex] ?? null;
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -62,6 +76,21 @@ export function GalleryHero({ feature }: GalleryHeroProps) {
     return clearStartupTimeout;
   }, [clearStartupTimeout, reducedMotion, videoUrl]);
 
+  // Autoplay carousel
+  useEffect(() => {
+    if (totalSlides <= 1) return;
+    autoplayRef.current = setInterval(() => {
+      onIndexChange((currentIndex + 1) % totalSlides);
+    }, AUTOPLAY_INTERVAL);
+    return () => {
+      if (autoplayRef.current) clearInterval(autoplayRef.current);
+    };
+  }, [totalSlides, currentIndex, onIndexChange]);
+
+  const goTo = (index: number) => {
+    onIndexChange(index);
+  };
+
   const showVideo = Boolean(
     videoUrl && reducedMotion === false && mediaState !== "fallback",
   );
@@ -74,7 +103,6 @@ export function GalleryHero({ feature }: GalleryHeroProps) {
   const playVideo = async () => {
     const video = videoRef.current;
     if (!video) return;
-
     try {
       await video.play();
       markPlaying();
@@ -128,23 +156,66 @@ export function GalleryHero({ feature }: GalleryHeroProps) {
         )}
       </div>
       <div className={styles.heroScrim} aria-hidden="true" />
+
       <div className={styles.heroCopy}>
         <p className={`${styles.monoLabel} ${styles.heroIndex}`}>
-          NOW SHOWING / 01
+          NOW SHOWING / {String(currentIndex).padStart(2, "0")}
         </p>
         <h1 id="gallery-title" className={styles.heroTitle}>
           {title}
         </h1>
         <p className={styles.heroDescription}>{description}</p>
         <div className={styles.heroActions}>
-          <Link className={styles.heroPrimary} href="/sandbox">
-            开始创作
-          </Link>
-          <Link className={styles.focusLink} href={href}>
-            查看展品
+          {feature ? (
+            <Link className={styles.heroPrimary} href={href}>
+              继续学习
+            </Link>
+          ) : (
+            <Link className={styles.heroPrimary} href="/sandbox">
+              开始创作
+            </Link>
+          )}
+          <Link className={styles.focusLink} href={feature ? href : "/explore"}>
+            {feature ? "查看展品" : "浏览社区"}
           </Link>
         </div>
       </div>
+
+      {/* Carousel controls */}
+      {totalSlides > 1 && (
+        <>
+          <button
+            type="button"
+            className={styles.carouselPrev}
+            onClick={() => goTo((currentIndex - 1 + totalSlides) % totalSlides)}
+            aria-label="上一个展品"
+          >
+            <ChevronLeft aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={styles.carouselNext}
+            onClick={() => goTo((currentIndex + 1) % totalSlides)}
+            aria-label="下一个展品"
+          >
+            <ChevronRight aria-hidden="true" />
+          </button>
+          <div className={styles.carouselDots} role="tablist" aria-label="展品列表">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={i === currentIndex}
+                className={`${styles.carouselDot} ${i === currentIndex ? styles.carouselDotActive : ""}`}
+                onClick={() => goTo(i)}
+                aria-label={i === 0 ? "封面" : `展品 ${i}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       {showVideo && (
         <button
           type="button"

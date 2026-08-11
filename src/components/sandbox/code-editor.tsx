@@ -110,6 +110,7 @@ export function CodeEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const typewriterRef = useRef<AbortController | null>(null);
+  const typewritingRef = useRef(false);
   const canvasOverlayRef = useRef<HTMLDivElement>(null);
 
   // Track value ONLY from editor changes — never sync from props
@@ -118,7 +119,12 @@ export function CodeEditor({
   const handleChange = useCallback(
     (val: string) => {
       editorValueRef.current = val;
-      onChange?.(val);
+      // Suppress onChange during typewriter animation to prevent
+      // the doc-clear step from triggering a setCode("") that
+      // re-enters the useEffect and spawns a racing typewriter.
+      if (!typewritingRef.current) {
+        onChange?.(val);
+      }
     },
     [onChange],
   );
@@ -130,6 +136,7 @@ export function CodeEditor({
       typewriterRef.current?.abort();
       const controller = new AbortController();
       typewriterRef.current = controller;
+      typewritingRef.current = true;
 
       const currentDoc = view.state.doc.toString();
 
@@ -147,6 +154,9 @@ export function CodeEditor({
 
       for (let i = 0; i < targetCode.length; i += CHUNK_SIZE) {
         if (controller.signal.aborted) return;
+
+        // Guard against the doc being replaced externally (defense-in-depth)
+        if (pos > view.state.doc.length) return;
 
         const chunk = targetCode.slice(i, i + CHUNK_SIZE);
         view.dispatch({
@@ -180,8 +190,14 @@ export function CodeEditor({
         overlay.style.transition = "opacity 0.8s ease-out";
         overlay.style.opacity = "0";
       }
+
+      // Sync final value to parent now that animation is complete
+      typewritingRef.current = false;
+      const finalDoc = view.state.doc.toString();
+      editorValueRef.current = finalDoc;
+      onChange?.(finalDoc);
     },
-    [],
+    [onChange],
   );
 
   useEffect(() => {

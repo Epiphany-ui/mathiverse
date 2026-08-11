@@ -205,6 +205,73 @@ blockquote.book-quote::before {
   line-height: 1;
 }
 
+/* ===== Prose Typography (wiki/article body) ===== */
+
+.prose-custom {
+  line-height: 1.85;
+  color: var(--body);
+  font-size: 1.02rem;
+  font-family: 'Georgia', 'Noto Serif SC', 'Source Han Serif SC', serif;
+  word-break: break-word;
+  letter-spacing: 0.01em;
+}
+.prose-custom h1 {
+  font-size: 1.8rem; font-weight: 700; color: var(--ink);
+  margin: 2rem 0 1rem; font-family: var(--font-display), serif;
+}
+.prose-custom h2 {
+  font-size: 1.4rem; font-weight: 700; color: var(--ink);
+  margin: 2rem 0 0.75rem; padding-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-display), serif;
+}
+.prose-custom h3 {
+  font-size: 1.15rem; font-weight: 600; color: var(--ink);
+  margin: 1.5rem 0 0.5rem;
+}
+.prose-custom h4 {
+  font-size: 1rem; font-weight: 600; color: var(--body);
+  margin: 1.25rem 0 0.5rem;
+}
+.prose-custom p { margin-bottom: 1em; text-indent: 0; }
+.prose-custom code:not(pre code) {
+  background: var(--surface-card); padding: 2px 7px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 0.88em; color: var(--accent);
+}
+.prose-custom pre {
+  background: var(--surface-dark); border: 1px solid var(--hairline);
+  border-radius: var(--radius-md); padding: 1rem; overflow-x: auto; margin: 1.25rem 0;
+}
+.prose-custom pre code {
+  font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.6;
+  color: #faf9f5; background: none; padding: 0;
+}
+.prose-custom ul, .prose-custom ol { margin: 0.75rem 0; padding-left: 1.8em; }
+.prose-custom li { margin-bottom: 0.35rem; }
+.prose-custom ol { list-style-type: decimal; }
+.prose-custom ul { list-style-type: disc; }
+.prose-custom blockquote {
+  border-left: 4px solid var(--primary); padding: 0.5rem 1.25rem; margin: 1.25rem 0;
+  background: rgba(204, 120, 92, 0.05); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--body);
+}
+.prose-custom a { color: var(--primary); text-decoration: none; }
+.prose-custom a:hover { text-decoration: underline; color: var(--primary-active); }
+.prose-custom strong { color: var(--ink); font-weight: 700; }
+.prose-custom em { color: var(--body); }
+.prose-custom table { width: 100%; border-collapse: collapse; margin: 1.25rem 0; font-size: 0.9rem; }
+.prose-custom th {
+  background: var(--surface-card); padding: 0.5rem 0.75rem; text-align: left;
+  font-weight: 700; color: var(--ink); border: 1px solid var(--hairline);
+}
+.prose-custom td { padding: 0.5rem 0.75rem; border: 1px solid var(--hairline); color: var(--body); }
+.prose-custom tbody tr:hover { background: rgba(204, 120, 92, 0.03); }
+.prose-custom img { max-width: 100%; border-radius: var(--radius-md); margin: 0.75rem 0; }
+.prose-custom hr { border: none; border-top: 1px solid var(--hairline); margin: 2rem 0; }
+.prose-custom .katex-display { margin: 1.25rem 0; overflow-x: auto; overflow-y: hidden; text-align: center; }
+.prose-custom .katex { font-size: 1.08em; }
+.prose-custom .katex-display > .katex { font-size: 1.15em; }
+
 /* ─── Card System (replaces glassmorphism) ─── */
 .card-cream {
   background: var(--surface-card);

@@ -1,13 +1,39 @@
 import type { FeedItem } from "@/types";
+import { isLocalRendererUrl } from "@/lib/utils";
+
+function isValidVideoUrl(url: string | null | undefined): url is string {
+  if (!url || url.trim().length === 0) return false;
+  // Filter out local renderer URLs that won't load for external users
+  if (isLocalRendererUrl(url)) return false;
+  return true;
+}
 
 export function selectGalleryFeature(items: FeedItem[]): FeedItem | null {
-  return (
-    items.find(
-      (item) => item.type === "visualization" && Boolean(item.videoUrl),
-    ) ??
-    items.find((item) => item.type === "visualization") ??
-    null
+  // Prefer visualizations with a valid publicly-reachable video URL
+  const withVideo = items.filter(
+    (item) => item.type === "visualization" && isValidVideoUrl(item.videoUrl),
   );
+
+  if (withVideo.length > 0) {
+    // Rotate daily: hash the date to pick consistently within a day
+    const pool = withVideo.slice(0, Math.min(5, withVideo.length));
+    const dayIndex =
+      Math.abs(
+        pool.reduce((h, item) => {
+          for (let i = 0; i < item.id.length; i++) h = (h * 31 + item.id.charCodeAt(i)) | 0;
+          return h;
+        }, new Date().toISOString().slice(0, 10).split("-").join("").charCodeAt(0)),
+      ) % pool.length;
+    return pool[dayIndex];
+  }
+
+  // Fallback to any visualization (even without video — GalleryHero
+  // shows MathematicalFallback but at least the title/description are real)
+  const anyViz = items.find((item) => item.type === "visualization");
+  if (anyViz) return anyViz;
+
+  // Last resort — any content
+  return items[0] ?? null;
 }
 
 export interface EditorialSlots {

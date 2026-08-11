@@ -52,10 +52,10 @@ test("selectGalleryFeature falls back to the first visualization", () => {
   assert.equal(selectGalleryFeature(items)?.id, "viz");
 });
 
-test("selectGalleryFeature returns null without visualizations", () => {
+test("selectGalleryFeature falls back to any content when no visualizations exist", () => {
   const items = [makeItem("article", "article")];
 
-  assert.equal(selectGalleryFeature(items), null);
+  assert.equal(selectGalleryFeature(items)?.id, "article");
 });
 
 test("buildEditorialSlots excludes the hero and never duplicates content", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
 import { GlassCard } from "@/components/shared/glass-card";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Settings, User, Bell, Shield, Check, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -18,10 +18,24 @@ export default function SettingsPage() {
   const [bio, setBio] = useState("");
   const [website, setWebsite] = useState("");
   const [email, setEmail] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [isOAuthUser, setIsOAuthUser] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // Avatar upload
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Password change
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -39,10 +53,14 @@ export default function SettingsPage() {
 
       setEmail(user.email ?? "");
 
+      // Check if user is OAuth-only (no email/password provider)
+      const providers = user.app_metadata?.providers ?? [];
+      setIsOAuthUser(providers.length > 0 && !providers.includes("email"));
+
       // Load profile from profiles table
       const { data: profile } = await supabase
         .from("profiles")
-        .select("display_name, bio, website")
+        .select("display_name, bio, website, avatar_url")
         .eq("id", user.id)
         .single();
 
@@ -50,6 +68,7 @@ export default function SettingsPage() {
         setDisplayName(profile.display_name ?? "");
         setBio(profile.bio ?? "");
         setWebsite(profile.website ?? "");
+        setAvatarUrl(profile.avatar_url ?? null);
       }
 
       setLoading(false);
@@ -128,6 +147,9 @@ export default function SettingsPage() {
           {/* Avatar */}
           <div className="flex items-center gap-4">
             <Avatar className="w-16 h-16">
+              {avatarUrl ? (
+                <AvatarImage src={avatarUrl} alt="头像" />
+              ) : null}
               <AvatarFallback className="text-xl bg-[#cc785c] text-white">
                 {displayName
                   ? displayName.slice(0, 2).toUpperCase()
@@ -135,11 +157,84 @@ export default function SettingsPage() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <Button variant="outline" size="sm" disabled>
-                更换头像
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+
+                  // Client-side size check
+                  if (file.size > 5 * 1024 * 1024) {
+                    setError("图片大小不能超过 5 MB");
+                    return;
+                  }
+
+                  setUploading(true);
+                  setError("");
+                  try {
+                    // Optimistic preview
+                    const previewUrl = URL.createObjectURL(file);
+                    setAvatarUrl(previewUrl);
+
+                    const form = new FormData();
+                    form.append("file", file);
+                    const res = await fetch("/api/profile/avatar", {
+                      method: "POST",
+                      body: form,
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      setAvatarUrl(data.url);
+                      // Refresh session so header picks up the new avatar_url in the JWT
+                      const supabase = createClient();
+                      if (supabase) {
+                        await supabase.auth.refreshSession();
+                      }
+                    } else {
+                      setError(data.error ?? "上传失败");
+                      // Revert preview — reload from server
+                      const supabase = createClient();
+                      if (supabase) {
+                        const { data: { user: u } } = await supabase.auth.getUser();
+                        if (u) {
+                          const { data: p } = await supabase
+                            .from("profiles")
+                            .select("avatar_url")
+                            .eq("id", u.id)
+                            .single();
+                          setAvatarUrl(p?.avatar_url ?? null);
+                        }
+                      }
+                    }
+                  } catch {
+                    setError("上传失败，请重试");
+                  } finally {
+                    setUploading(false);
+                    // Clear the file input so the same file can be re-selected
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }
+                  }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    上传中...
+                  </>
+                ) : (
+                  "更换头像"
+                )}
               </Button>
               <p className="text-xs text-muted-foreground mt-1">
-                头像上传将在后续版本支持
+                支持 PNG、JPEG、WebP、GIF，≤5MB
               </p>
             </div>
           </div>
@@ -226,12 +321,128 @@ export default function SettingsPage() {
             <Shield className="w-5 h-5 text-primary" />
             <h2 className="font-semibold">安全</h2>
           </div>
-          <Button variant="outline" size="sm" disabled>
-            修改密码
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            密码修改将在后续版本中提供
-          </p>
+
+          {isOAuthUser ? (
+            <p className="text-sm text-muted-foreground">
+              你通过第三方账号登录，无需密码。如需设置密码，请使用
+              &quot;忘记密码&quot;功能。
+            </p>
+          ) : (
+            <form
+              className="space-y-3"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setPasswordError("");
+                setPasswordSuccess(false);
+
+                if (newPassword.length < 6) {
+                  setPasswordError("新密码至少需要 6 个字符");
+                  return;
+                }
+                if (newPassword !== confirmPassword) {
+                  setPasswordError("两次输入的新密码不一致");
+                  return;
+                }
+
+                setPasswordBusy(true);
+                try {
+                  const supabase = createClient();
+                  if (!supabase) {
+                    setPasswordError("Supabase 未配置");
+                    setPasswordBusy(false);
+                    return;
+                  }
+
+                  // Verify current password first
+                  const { error: signInErr } = await supabase.auth.signInWithPassword({
+                    email,
+                    password: currentPassword,
+                  });
+                  if (signInErr) {
+                    setPasswordError("当前密码不正确");
+                    setPasswordBusy(false);
+                    return;
+                  }
+
+                  const { error: updateErr } = await supabase.auth.updateUser({
+                    password: newPassword,
+                  });
+                  if (updateErr) {
+                    setPasswordError(updateErr.message);
+                  } else {
+                    setPasswordSuccess(true);
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }
+                } catch {
+                  setPasswordError("修改失败，请重试");
+                } finally {
+                  setPasswordBusy(false);
+                }
+              }}
+            >
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">当前密码</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">新密码</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">确认新密码</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              {passwordError && (
+                <p className="text-sm text-red-400 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {passwordError}
+                </p>
+              )}
+              {passwordSuccess && (
+                <p className="text-sm text-green-400 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" />
+                  密码已更新
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                disabled={passwordBusy}
+                className="bg-[#cc785c] hover:bg-[#a9583e] text-white gap-1.5"
+              >
+                {passwordBusy ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : null}
+                {passwordBusy ? "修改中..." : "修改密码"}
+              </Button>
+            </form>
+          )}
         </GlassCard>
       </main>
     </div>

@@ -7,7 +7,7 @@ import { BookmarkButton } from "@/components/shared/bookmark-button";
 import { TagBadge } from "@/components/content/tag-badge";
 import { CommentList } from "@/components/community/comment-list";
 import { ScrollReveal } from "@/components/shared/scroll-reveal";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -20,6 +20,7 @@ import {
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isLocalRendererUrl } from "@/lib/utils";
 import {
   getVisualizationById,
   getCommentsForTarget,
@@ -59,6 +60,12 @@ export default async function VisualizationPage({
     target_id: id,
   }).then(() => {}, () => {});
 
+  // If videoUrl is a local renderer URL, proxy it so it plays in local dev
+  const isLocalVideoUrl = isLocalRendererUrl(viz.videoUrl);
+  const playableVideoUrl = isLocalVideoUrl
+    ? `/api/video-proxy?url=${encodeURIComponent(viz.videoUrl!)}`
+    : viz.videoUrl;
+
   return (
     <div className="min-h-screen flex flex-col relative">
       {/* Framer-style atmosphere blobs */}
@@ -89,8 +96,11 @@ export default async function VisualizationPage({
         {/* ── Video Card — large, Framer atmosphere ── */}
         <ScrollReveal delay={0}>
           <div className="rounded-2xl overflow-hidden border border-[#e6dfd8] bg-white/60 backdrop-blur-sm shadow-sm">
-            {viz.videoUrl ? (
-              <VideoPlayer src={viz.videoUrl} poster={viz.posterUrl ?? undefined} />
+            {playableVideoUrl ? (
+              <VideoPlayer
+                src={playableVideoUrl}
+                poster={viz.posterUrl ?? undefined}
+              />
             ) : (
               <div className="aspect-video flex flex-col items-center justify-center gap-3 relative overflow-hidden">
                 {/* Decorative blobs inside placeholder */}
@@ -132,6 +142,9 @@ export default async function VisualizationPage({
               <Link href={`/u/${viz.author?.username}`}>
                 <div className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                   <Avatar className="w-10 h-10 ring-2 ring-white">
+                    {viz.author?.avatarUrl ? (
+                      <AvatarImage src={viz.author.avatarUrl} alt="" />
+                    ) : null}
                     <AvatarFallback className="bg-[#cc785c] text-white text-sm">
                       {viz.author?.displayName?.slice(0, 1) ?? "?"}
                     </AvatarFallback>

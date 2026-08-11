@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { TiltCard } from "@/components/shared/tilt-card";
 import { GenerativeThumbnail } from "@/components/content/generative-thumbnail";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Heart,
   MessageCircle,
@@ -110,6 +110,9 @@ function VizCard({ item, href, className }: { item: FeedItem; href: string; clas
           {/* Footer */}
           <div className="px-4 py-3 flex items-center gap-2 text-xs text-[#6c6a64]">
             <Avatar className="w-5 h-5 ring-1 ring-white">
+              {item.author?.avatarUrl ? (
+                <AvatarImage src={item.author.avatarUrl} alt="" />
+              ) : null}
               <AvatarFallback className="text-[10px] bg-[#cc785c] text-white">
                 {item.author?.displayName?.slice(0, 1) ?? "?"}
               </AvatarFallback>
@@ -164,6 +167,9 @@ function ArticleCard({ item, href, className }: { item: FeedItem; href: string; 
             <div className="flex-1" />
             <div className="flex items-center gap-2 text-xs text-[#6c6a64] mt-3 pt-3 border-t border-[#e6dfd8]/50">
               <Avatar className="w-5 h-5">
+                {item.author?.avatarUrl ? (
+                  <AvatarImage src={item.author.avatarUrl} alt="" />
+                ) : null}
                 <AvatarFallback className="text-[10px] bg-[#181715] text-white">
                   {item.author?.displayName?.slice(0, 1) ?? "?"}
                 </AvatarFallback>

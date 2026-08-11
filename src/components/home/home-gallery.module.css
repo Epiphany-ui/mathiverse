@@ -27,6 +27,18 @@
   text-transform: uppercase;
 }
 
+.heroIndex {
+  margin-bottom: 0.5rem;
+}
+
+.coverLabel {
+  position: absolute;
+  left: 2rem;
+  bottom: 2rem;
+  z-index: 2;
+  color: rgba(242, 243, 237, 0.48);
+}
+
 .focusLink:focus-visible,
 .mediaControl:focus-visible,
 .promptInput:focus-visible,
@@ -613,6 +625,60 @@
   .fieldConstruction {
     transition: none;
   }
+}
+
+/* ─── Carousel ─── */
+
+.carouselPrev,
+.carouselNext {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid rgba(242, 243, 237, 0.22);
+  border-radius: 50%;
+  background: rgba(11, 15, 12, 0.45);
+  color: var(--archive-paper);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.galleryHero:hover .carouselPrev,
+.galleryHero:hover .carouselNext {
+  opacity: 1;
+}
+
+.carouselPrev { left: 1.25rem; }
+.carouselNext { right: 1.25rem; }
+
+.carouselDots {
+  position: absolute;
+  bottom: 6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.carouselDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: 1px solid rgba(242, 243, 237, 0.4);
+  background: transparent;
+  transition: background 200ms ease;
+}
+
+.carouselDotActive {
+  background: var(--archive-paper);
+  border-color: var(--archive-paper);
 }
 
 .promptSection { max-width: 84rem; margin: 0 auto; padding: 7rem 2rem 9rem; border-top: 1px solid var(--gallery-line-light); }

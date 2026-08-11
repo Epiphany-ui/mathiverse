@@ -2,7 +2,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
 import { GlassCard } from "@/components/shared/glass-card";
 import { FeedCard } from "@/components/community/feed-card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "lucide-react";
@@ -13,6 +13,8 @@ import {
   getProfileByUsername,
   getUserVisualizations,
   getUserArticles,
+  getUserBookmarks,
+  getUserForks,
 } from "@/lib/db/queries";
 
 export default async function UserProfilePage({
@@ -34,6 +36,8 @@ export default async function UserProfilePage({
 
   const vizs = await getUserVisualizations(supabase, profile.id);
   const articles = await getUserArticles(supabase, profile.id);
+  const bookmarkItems = await getUserBookmarks(supabase, profile.id);
+  const forkItems = await getUserForks(supabase, profile.id);
 
   // Build feed items from user content
   const vizItems = vizs.map((v) => ({
@@ -82,6 +86,9 @@ export default async function UserProfilePage({
         <GlassCard className="p-6" hover={false}>
           <div className="flex items-start gap-6">
             <Avatar className="w-20 h-20 shrink-0">
+              {profile.avatarUrl ? (
+                <AvatarImage src={profile.avatarUrl} alt={profile.displayName ?? ""} />
+              ) : null}
               <AvatarFallback className="text-2xl bg-[#cc785c] text-white">
                 {(profile.displayName ?? "U").slice(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -130,10 +137,10 @@ export default async function UserProfilePage({
               文章 ({articles.length})
             </TabsTrigger>
             <TabsTrigger value="collections">
-              收藏 (0)
+              收藏 ({bookmarkItems.length})
             </TabsTrigger>
             <TabsTrigger value="forks">
-              Fork (0)
+              Fork ({forkItems.length})
             </TabsTrigger>
           </TabsList>
 
@@ -166,15 +173,31 @@ export default async function UserProfilePage({
           </TabsContent>
 
           <TabsContent value="collections" className="mt-6">
-            <div className="text-center py-16">
-              <p className="text-muted-foreground">还没有收藏内容</p>
-            </div>
+            {bookmarkItems.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-muted-foreground">还没有收藏内容</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {bookmarkItems.map((item) => (
+                  <FeedCard key={item.id} item={item} />
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="forks" className="mt-6">
-            <div className="text-center py-16">
-              <p className="text-muted-foreground">还没有 Fork 内容</p>
-            </div>
+            {forkItems.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-muted-foreground">还没有 Fork 内容</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {forkItems.map((item) => (
+                  <FeedCard key={item.id} item={item} />
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </main>

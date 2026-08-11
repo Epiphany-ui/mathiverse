@@ -1,7 +1,6 @@
 import { ConceptPrompt } from "@/components/home/concept-prompt";
 import { EditorialFeed } from "@/components/home/editorial-feed";
-import { ExhibitionIndex } from "@/components/home/exhibition-index";
-import { GalleryHero } from "@/components/home/gallery-hero";
+import { GallerySection } from "@/components/home/gallery-section";
 import {
   buildEditorialSlots,
   buildFieldLinks,
@@ -9,30 +8,46 @@ import {
 } from "@/components/home/home-data";
 import styles from "@/components/home/home-gallery.module.css";
 import { MathFieldMap } from "@/components/home/math-field-map";
+import { WikiSpotlight } from "@/components/home/wiki-spotlight";
 import { AppHeader } from "@/components/layout/app-header";
 import { buildFeedItems } from "@/lib/db/queries";
+import { getAllWikiEntriesForListing } from "@/lib/db/wiki";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function Home() {
   const supabase = await createClient();
-  const feedItems = supabase ? await buildFeedItems(supabase, "hot") : [];
+  const [feedItems, wikiEntries] = supabase
+    ? await Promise.all([
+        buildFeedItems(supabase, "hot"),
+        getAllWikiEntriesForListing(supabase),
+      ])
+    : [[], []];
   const feature = selectGalleryFeature(feedItems);
   const slots = buildEditorialSlots(feedItems, feature);
   const fields = buildFieldLinks(feedItems);
+
+  // Carousel: featured item first, then up to 3 other visualizations with video
+  const carouselFeatures = [
+    ...(feature ? [feature] : []),
+    ...feedItems
+      .filter(
+        (f) =>
+          f.type === "visualization" &&
+          f.videoUrl &&
+          f.id !== feature?.id,
+      )
+      .slice(0, 3),
+  ];
 
   return (
     <div className={styles.page}>
       <div className={styles.darkStage}>
         <AppHeader appearance="gallery" />
-        <GalleryHero feature={feature} />
-        <ExhibitionIndex
-          feature={feature}
-          next={slots.lead}
-          story={slots.story}
-        />
+        <GallerySection features={carouselFeatures} />
       </div>
       <main className={styles.lightStage}>
         <MathFieldMap fields={fields} />
+        <WikiSpotlight entries={wikiEntries} />
         <EditorialFeed slots={slots} />
         <ConceptPrompt />
       </main>

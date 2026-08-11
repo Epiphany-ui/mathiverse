@@ -52,6 +52,18 @@
    - Python FastAPI 服务（localhost:9876）
    - 接收 Manim 代码 → 调用 manim CLI → 返回视频
 
+6. **数学百科（Wiki）**
+   - 数学词条库（纯数学 / 应用数学 / CS 交叉三类）
+   - KaTeX 数学公式渲染
+   - 知识图谱可视化（词条间关联边）
+   - 选中文本即时生成 Manim 动画卡片
+   - 词条来源：Wikipedia CC BY-SA 授权内容，经 AI 翻译整理为中文 Markdown
+
+### 开发阶段说明
+
+- **Wiki 内容**：开发阶段使用 AI（DeepSeek）从 Wikipedia 自动生成中文词条作为 Mock 数据。上线后由管理员审核百科提交，AI 生成仅辅助编辑，不直接发布。
+- **示例数据**：可视化作品和文章使用 `src/lib/db/mock-data.ts` 本地 Mock。配置 Supabase 后切换为真实数据库查询。
+
 ### P1 — 后续迭代
 
 - 推荐系统（协同过滤）

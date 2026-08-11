@@ -1,9 +1,34 @@
 "use client";
 
+import { Component, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { cn } from "@/lib/utils";
+import { AlertTriangle } from "lucide-react";
+
+// KaTeX errors from malformed AI-generated LaTeX shouldn't crash the page.
+// rehype-katex v7 hardcodes throwOnError:true for display math, so we need
+// an error boundary as a safety net.
+class MathErrorBoundary extends Component<{ children: ReactNode }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center gap-2 rounded-lg border border-[#e6dfd8] bg-[#fdf8f5] px-4 py-3 text-sm text-[#6c6a64]">
+          <AlertTriangle className="w-4 h-4 text-[#cc785c]/60 shrink-0" />
+          公式渲染出错，请刷新页面重试
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface MarkdownRendererProps {
   content: string;
@@ -13,9 +38,10 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
     <div className={cn("prose dark:prose-invert max-w-none", className)}>
+      <MathErrorBoundary>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[[rehypeKatex, { strict: false }]]}
         components={{
           // Style code blocks
           pre: ({ children, ...props }) => (
@@ -64,6 +90,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
       >
         {content}
       </ReactMarkdown>
+      </MathErrorBoundary>
     </div>
   );
 }

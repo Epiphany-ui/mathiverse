@@ -20,10 +20,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminClient } from "@/lib/supabase/admin";
 import {
   getWikiEntryBySlug,
-  getWikiEntriesByCategory,
-  getWikiEntriesByIds,
   getConnectedEntries,
 } from "@/lib/db/wiki";
 import { getCommentsForTarget } from "@/lib/db/queries";
@@ -49,16 +48,25 @@ export async function generateMetadata({
 }: WikiEntryPageProps): Promise<Metadata> {
   const { slug } = await params;
   const supabase = await createClient();
-  const entry = supabase ? await getWikiEntryBySlug(supabase, slug) : null;
+  // Use lightweight query — only need title, summary, coverUrl for metadata
+  const entry = supabase
+    ? await supabase
+        .from("wiki_entries")
+        .select("title, summary, cover_url")
+        .eq("slug", slug)
+        .eq("is_published", true)
+        .single()
+        .then(({ data }) => data)
+    : null;
   if (!entry) return { title: "词条未找到 — Mathiverse" };
 
   return {
     title: `${entry.title} — Mathiverse 百科`,
-    description: entry.summary,
+    description: entry.summary ?? "",
     openGraph: {
       title: `${entry.title} — Mathiverse 百科`,
-      description: entry.summary,
-      images: entry.coverUrl ? [entry.coverUrl] : [],
+      description: entry.summary ?? "",
+      images: entry.cover_url ? [entry.cover_url] : [],
     },
   };
 }
@@ -71,10 +79,35 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
   const entry = await getWikiEntryBySlug(supabase, slug);
   if (!entry) notFound();
 
-  const comments = await getCommentsForTarget(supabase, "wiki", entry.id);
-
-  // Knowledge graph data
-  const graphData = await getConnectedEntries(supabase, entry.id);
+  // Parallelize: comments, knowledge graph, and related entries are all independent
+  const [comments, graphData, related] = await Promise.all([
+    getCommentsForTarget(supabase, "wiki", entry.id),
+    (async () => {
+      const admin = getAdminClient();
+      return admin
+        ? await getConnectedEntries(admin, entry.id)
+        : await getConnectedEntries(supabase, entry.id);
+    })(),
+    // Lightweight: only select needed columns, skip bodyMd
+    supabase
+      .from("wiki_entries")
+      .select("id, slug, title, category, cover_url, tags, views_count, likes_count, created_at, updated_at")
+      .eq("category", entry.category)
+      .eq("is_published", true)
+      .order("created_at", { ascending: false })
+      .then(({ data }) =>
+        (data ?? [])
+          .map((row) => ({
+            id: row.id, slug: row.slug, title: row.title,
+            category: row.category, coverUrl: row.cover_url,
+            tags: row.tags ?? [], viewsCount: row.views_count ?? 0,
+            likesCount: row.likes_count ?? 0, createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          }))
+          .filter((relatedEntry) => relatedEntry.id !== entry.id)
+          .slice(0, 3),
+      ),
+  ]);
 
   // Fire-and-forget view count
   supabase
@@ -83,15 +116,6 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
       target_id: entry.id,
     })
     .then(() => {}, () => {});
-
-  // Related entries: same category, exclude self
-  const related = await (async () => {
-    const sameCategory = await getWikiEntriesByCategory(
-      supabase,
-      entry.category,
-    );
-    return sameCategory.filter((e) => e.id !== entry.id).slice(0, 3);
-  })();
 
   const categoryMeta = WIKI_CATEGORIES.find((c) => c.id === entry.category);
 
@@ -254,7 +278,7 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {related.map((r) => {
+                {related.map((r: { id: string; slug: string; title: string; category: string }) => {
                   const rm = WIKI_CATEGORIES.find((c) => c.id === r.category);
                   return (
                     <Link key={r.id} href={`/wiki/${r.slug}`}>

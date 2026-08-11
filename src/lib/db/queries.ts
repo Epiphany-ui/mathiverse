@@ -128,7 +128,7 @@ function normComment(row: Record<string, any>): Comment {
     authorId: row.authorId ?? row.author_id ?? "unknown",
     targetType: row.targetType ?? row.target_type ?? "visualization",
     targetId: row.targetId ?? row.target_id ?? "",
-    parentId: row.parentId ?? row.parent_id ?? null,
+    parentId: row.parentId || row.parent_id || null,
     likesCount: row.likesCount ?? row.likes_count ?? 0,
     createdAt: row.createdAt ?? row.created_at ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
@@ -186,14 +186,22 @@ export async function getCommentsForTarget(
 
   const rows: Comment[] = data.map((row: any) => normComment(row));
 
-  // Build reply tree: top-level (no parentId) + nested replies
-  const topLevel = rows.filter((c) => !c.parentId);
-  const replies = rows.filter((c) => c.parentId);
+  // Build reply tree: recursively attach children at every depth
+  const byParent = new Map<string | null, Comment[]>();
+  for (const c of rows) {
+    const key = c.parentId ?? null;
+    const bucket = byParent.get(key);
+    if (bucket) bucket.push(c);
+    else byParent.set(key, [c]);
+  }
 
-  return topLevel.map((c) => ({
-    ...c,
-    replies: replies.filter((r) => r.parentId === c.id),
-  }));
+  function attachReplies(parent: Comment): Comment {
+    const children = byParent.get(parent.id);
+    if (!children || children.length === 0) return parent;
+    return { ...parent, replies: children.map(attachReplies) };
+  }
+
+  return (byParent.get(null) ?? []).map(attachReplies);
 }
 
 /* ─── User content ─── */
@@ -204,7 +212,7 @@ export async function getUserVisualizations(
 ): Promise<Visualization[]> {
   const { data, error } = await client
     .from("visualizations")
-    .select("*")
+    .select("*, profiles!author_id(id, username, display_name, avatar_url)")
     .eq("author_id", userId)
     .eq("is_published", true)
     .order("created_at", { ascending: false });
@@ -219,7 +227,7 @@ export async function getUserArticles(
 ): Promise<Article[]> {
   const { data, error } = await client
     .from("articles")
-    .select("*")
+    .select("*, profiles!author_id(id, username, display_name, avatar_url)")
     .eq("author_id", userId)
     .eq("is_published", true)
     .order("created_at", { ascending: false });
@@ -233,17 +241,22 @@ export async function getUserArticles(
 export async function buildFeedItems(
   client: any,
   sort: FeedSort,
+  userId?: string,
 ): Promise<FeedItem[]> {
+  // Feed cards only need metadata — skip heavy source_code / body_md columns
+  const FEED_VIZ_COLS = "id, title, description, tags, poster_url, video_url, author_id, likes_count, comments_count, created_at";
+  const FEED_ARTICLE_COLS = "id, title, body_md, tags, cover_url, author_id, likes_count, comments_count, created_at";
+
   // Fetch visualizations + their authors
   const { data: vizData, error: vizErr } = await client
     .from("visualizations")
-    .select("*, profiles!author_id(id, username, display_name, avatar_url)")
+    .select(`${FEED_VIZ_COLS}, profiles!author_id(id, username, display_name, avatar_url)`)
     .eq("is_published", true);
 
   // Fetch articles + their authors
   const { data: articleData, error: artErr } = await client
     .from("articles")
-    .select("*, profiles!author_id(id, username, display_name, avatar_url)")
+    .select(`${FEED_ARTICLE_COLS}, profiles!author_id(id, username, display_name, avatar_url)`)
     .eq("is_published", true);
 
   if (vizErr && artErr) return [];
@@ -288,6 +301,28 @@ export async function buildFeedItems(
   }));
 
   const all = [...vizItems, ...articleItems];
+
+  if (sort === "followed") {
+    // Resolve userId: explicit param, or try client auth, or fall back to empty
+    let uid = userId;
+    if (!uid) {
+      try {
+        const { data: { user } } = await client.auth.getUser();
+        uid = user?.id;
+      } catch { /* client doesn't support auth.getUser */ }
+    }
+    if (!uid) return [];
+
+    const { data: follows } = await client
+      .from("follows")
+      .select("following_id")
+      .eq("follower_id", uid);
+
+    const following = new Set((follows ?? []).map((f: any) => f.following_id));
+    return all
+      .filter((item) => following.has(item.author.id))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
 
   if (sort === "new") {
     all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -389,4 +424,118 @@ export async function filterByTag(
   return all.filter((item) =>
     item.tags.some((t) => t.toLowerCase() === tag.toLowerCase()),
   );
+}
+
+/* ─── User Bookmarks ─── */
+
+/** Get a user's bookmarked visualizations and articles, newest bookmark first.
+ *  Note: wiki bookmarks exist in the DB but are excluded — FeedItem only handles viz/article. */
+export async function getUserBookmarks(
+  client: any,
+  userId: string,
+): Promise<FeedItem[]> {
+  const { data: rows, error } = await client
+    .from("bookmarks")
+    .select("target_type, target_id, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error || !rows?.length) return [];
+
+  const vizIds: string[] = [];
+  const articleIds: string[] = [];
+  const rowMap = new Map<string, { targetType: string; bookmarkedAt: string }>();
+  for (const r of rows) {
+    const key = `${r.target_type}:${r.target_id}`;
+    rowMap.set(key, { targetType: r.target_type, bookmarkedAt: r.created_at ?? r.createdAt });
+    if (r.target_type === "visualization") vizIds.push(r.target_id);
+    else if (r.target_type === "article") articleIds.push(r.target_id);
+  }
+
+  const results: FeedItem[] = [];
+
+  if (vizIds.length) {
+    const { data: vizData } = await client
+      .from("visualizations")
+      .select("*, profiles!author_id(id, username, display_name, avatar_url)")
+      .in("id", vizIds);
+    for (const v of vizData ?? []) {
+      const meta = rowMap.get(`visualization:${v.id}`);
+      results.push({
+        type: "visualization",
+        id: v.id,
+        title: v.title,
+        description: v.description,
+        posterUrl: v.poster_url ?? v.posterUrl ?? null,
+        tags: v.tags ?? [],
+        author: v.profiles
+          ? { id: v.profiles.id, username: v.profiles.username ?? "unknown", displayName: v.profiles.display_name ?? v.profiles.displayName ?? "Unknown", avatarUrl: v.profiles.avatar_url ?? v.profiles.avatarUrl ?? null }
+          : { id: v.author_id ?? v.authorId ?? "unknown", username: "unknown", displayName: "Unknown", avatarUrl: null },
+        likesCount: v.likes_count ?? v.likesCount ?? 0,
+        commentsCount: v.comments_count ?? v.commentsCount ?? 0,
+        createdAt: meta?.bookmarkedAt ?? v.created_at ?? v.createdAt,
+      });
+    }
+  }
+
+  if (articleIds.length) {
+    const { data: artData } = await client
+      .from("articles")
+      .select("*, profiles!author_id(id, username, display_name, avatar_url)")
+      .in("id", articleIds);
+    for (const a of artData ?? []) {
+      const meta = rowMap.get(`article:${a.id}`);
+      results.push({
+        type: "article",
+        id: a.id,
+        title: a.title,
+        description: (a.body_md ?? a.bodyMd ?? "").slice(0, 150) + "...",
+        coverUrl: a.cover_url ?? a.coverUrl ?? null,
+        posterUrl: a.cover_url ?? a.coverUrl ?? null,
+        tags: a.tags ?? [],
+        author: a.profiles
+          ? { id: a.profiles.id, username: a.profiles.username ?? "unknown", displayName: a.profiles.display_name ?? a.profiles.displayName ?? "Unknown", avatarUrl: a.profiles.avatar_url ?? a.profiles.avatarUrl ?? null }
+          : { id: a.author_id ?? a.authorId ?? "unknown", username: "unknown", displayName: "Unknown", avatarUrl: null },
+        likesCount: a.likes_count ?? a.likesCount ?? 0,
+        commentsCount: a.comments_count ?? a.commentsCount ?? 0,
+        createdAt: meta?.bookmarkedAt ?? a.created_at ?? a.createdAt,
+      });
+    }
+  }
+
+  return results;
+}
+
+/* ─── User Forks ─── */
+
+/** Get visualizations the user created by forking others' work. */
+export async function getUserForks(
+  client: any,
+  userId: string,
+): Promise<FeedItem[]> {
+  const { data, error } = await client
+    .from("visualizations")
+    .select("*, profiles!author_id(id, username, display_name, avatar_url)")
+    .eq("author_id", userId)
+    .eq("is_published", true)
+    .not("forked_from", "is", null)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((v: any) => ({
+    type: "visualization" as const,
+    id: v.id,
+    title: v.title,
+    description: v.description,
+    posterUrl: v.poster_url ?? v.posterUrl ?? null,
+    videoUrl: v.video_url ?? v.videoUrl ?? null,
+    tags: v.tags ?? [],
+    author: v.profiles
+      ? { id: v.profiles.id, username: v.profiles.username ?? "unknown", displayName: v.profiles.display_name ?? v.profiles.displayName ?? "Unknown", avatarUrl: v.profiles.avatar_url ?? v.profiles.avatarUrl ?? null }
+      : { id: v.author_id ?? v.authorId ?? "unknown", username: "unknown", displayName: "Unknown", avatarUrl: null },
+    likesCount: v.likes_count ?? v.likesCount ?? 0,
+    commentsCount: v.comments_count ?? v.commentsCount ?? 0,
+    createdAt: v.created_at ?? v.createdAt,
+  }));
 }

@@ -12,7 +12,7 @@ import {
 } from "@/lib/db/interactions";
 
 interface BookmarkButtonProps {
-  targetType: "visualization" | "article";
+  targetType: "visualization" | "article" | "wiki";
   targetId: string;
   className?: string;
 }

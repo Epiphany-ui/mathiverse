@@ -64,6 +64,20 @@ export async function getAllWikiEntries(
   return data.map((row: any) => normWikiEntry(row));
 }
 
+/** Lightweight listing — excludes the heavy body_md column. */
+export async function getAllWikiEntriesForListing(
+  client: any,
+): Promise<WikiEntry[]> {
+  const { data, error } = await client
+    .from("wiki_entries")
+    .select("id, slug, title, category, summary, cover_url, tags, likes_count, comments_count, views_count, is_published, created_at, updated_at")
+    .eq("is_published", true)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+  return data.map((row: any) => normWikiEntry(row));
+}
+
 export async function getWikiEntriesByCategory(
   client: any,
   category: WikiCategory,
@@ -169,12 +183,13 @@ export async function insertEdges(
   return edges.length;
 }
 
-/** Get all entries connected to the given entry (up to 2 hops). */
+/** Get all entries connected to the given entry (up to 2 hops).
+ *  Uses batch queries instead of N+1 individual edge fetches. */
 export async function getConnectedEntries(
   client: any,
   entryId: string,
 ): Promise<{ entries: WikiEntry[]; edges: WikiEdge[]; allIds: Set<string> }> {
-  // First hop: direct edges from wiki_edges table
+  // First hop: edges directly connected to entryId
   const directEdges = await getEdgesForEntry(client, entryId);
 
   // Fallback: if no edges exist, generate from shared tags
@@ -186,12 +201,18 @@ export async function getConnectedEntries(
     e.sourceId === entryId ? e.targetId : e.sourceId,
   );
 
-  // Second hop: edges of connected entries
-  const secondEdges: WikiEdge[] = [];
-  for (const id of directIds.slice(0, 8)) {
-    const es = await getEdgesForEntry(client, id);
-    secondEdges.push(...es);
-  }
+  // Second hop: batch-query ALL edges for the connected entries in one round trip.
+  // Query edges where source_id or target_id is any of the directIds.
+  const hopIds = directIds.slice(0, 8);
+  const [sourceRes, targetRes] = await Promise.all([
+    client.from("wiki_edges").select("*").in("source_id", hopIds),
+    client.from("wiki_edges").select("*").in("target_id", hopIds),
+  ]);
+
+  const secondEdges: WikiEdge[] = [
+    ...(sourceRes.data ?? []).map((row: any) => normEdge(row)),
+    ...(targetRes.data ?? []).map((row: any) => normEdge(row)),
+  ];
 
   const allEdges = [...directEdges, ...secondEdges];
   const allIds = new Set<string>();
@@ -214,7 +235,7 @@ async function getTagBasedConnections(
   const current = await getWikiEntryById(client, entryId);
   if (!current) return { entries: [], edges: [], allIds: new Set() };
 
-  const allEntries = await getAllWikiEntries(client);
+  const allEntries = await getAllWikiEntriesForListing(client);
   const currentTags = new Set(current.tags ?? []);
 
   const edges: WikiEdge[] = [];

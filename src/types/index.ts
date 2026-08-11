@@ -92,6 +92,31 @@ export interface FeedItem {
   isBookmarked?: boolean;
 }
 
+/* ─── Wiki types ─── */
+export type WikiCategory = "pure-math" | "applied-math" | "cs-overlap";
+
+export interface WikiEntry {
+  id: string;
+  slug: string;
+  title: string;
+  category: WikiCategory;
+  summary: string;
+  bodyMd: string;
+  coverUrl: string | null;
+  tags: string[];
+  wikipediaTitle: string | null;
+  wikipediaUrl: string | null;
+  likesCount: number;
+  commentsCount: number;
+  viewsCount: number;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Joined
+  isLiked?: boolean;
+  isBookmarked?: boolean;
+}
+
 /* ─── AI / Sandbox types ─── */
 export interface ChatMessage {
   id: string;

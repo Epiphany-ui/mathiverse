@@ -6,7 +6,7 @@ import { TagBadge } from "@/components/content/tag-badge";
 import { CommentList } from "@/components/community/comment-list";
 import { ScrollReveal } from "@/components/shared/scroll-reveal";
 import { GlassCard } from "@/components/shared/glass-card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -120,6 +120,9 @@ export default async function ArticlePage({
             <Link href={`/u/${article.author?.username}`}>
               <div className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                 <Avatar className="w-9 h-9 ring-2 ring-white">
+                  {article.author?.avatarUrl ? (
+                    <AvatarImage src={article.author.avatarUrl} alt="" />
+                  ) : null}
                   <AvatarFallback className="bg-[#181715] text-white text-xs">
                     {article.author?.displayName?.slice(0, 1) ?? "?"}
                   </AvatarFallback>
