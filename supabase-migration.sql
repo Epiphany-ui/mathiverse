@@ -152,9 +152,9 @@ CREATE POLICY "likes_read_all" ON likes FOR SELECT USING (true);
 CREATE POLICY "likes_insert_own" ON likes FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "likes_delete_own" ON likes FOR DELETE USING (auth.uid() = user_id);
 
--- Bookmarks: 同上
+-- Bookmarks: 仅本人可读写
 ALTER TABLE bookmarks ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "bookmarks_read_all" ON bookmarks FOR SELECT USING (true);
+CREATE POLICY "bookmarks_read_own" ON bookmarks FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "bookmarks_insert_own" ON bookmarks FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "bookmarks_delete_own" ON bookmarks FOR DELETE USING (auth.uid() = user_id);
 
