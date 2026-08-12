@@ -223,10 +223,22 @@ export class SupabaseGenerationJobStore implements GenerationJobStore {
     if (!(await this.getJobById(jobId))) {
       throw new GenerationStoreError("Job not found", 404);
     }
+
+    // Compute per-job sequence (not global identity — see migration 018)
+    const { data: maxRow } = await this.client
+      .from("generation_versions")
+      .select("sequence")
+      .eq("job_id", jobId)
+      .order("sequence", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextSeq = ((maxRow as { sequence: number } | null)?.sequence ?? 0) + 1;
+
     const { data, error } = await this.client
       .from("generation_versions")
       .insert({
         job_id: jobId,
+        sequence: nextSeq,
         source: version.source,
         code: version.code,
         validation: version.validation,
