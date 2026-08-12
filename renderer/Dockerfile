@@ -7,4 +7,4 @@ WORKDIR /app
 COPY server.py core.py requirements.txt ./
 
 EXPOSE 9876
-CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-9876}
+CMD python -m uvicorn server:app --host 0.0.0.0 --port ${PORT:-9876}
