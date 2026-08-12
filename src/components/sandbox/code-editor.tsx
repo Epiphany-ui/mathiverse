@@ -98,6 +98,13 @@ interface CodeEditorProps {
   /** Called after all changes have been applied. */
   onChangesDone?: () => void;
   externalUpdateMode?: "immediate" | "paint";
+  /**
+   * Stable trigger for the typewriter animation.  When versionId changes
+   * (a new AI version was created or the user rolled back), the editor
+   * animates the incoming code.  Using a stable id instead of the value
+   * string avoids the re-render / racing-dispatch restart problem.
+   */
+  versionId?: string | null;
 }
 
 export function CodeEditor({
@@ -108,6 +115,7 @@ export function CodeEditor({
   applyChanges,
   onChangesDone,
   externalUpdateMode = "paint",
+  versionId,
 }: CodeEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -271,33 +279,32 @@ export function CodeEditor({
     };
   }, []); // Only create once
 
-  // Handle external value changes (e.g. AI generated code).
-  // typewriteCode is intentionally omitted from deps — it's stable (useCallback
-  // with []) via onChangeRef so it never retriggers this effect mid-animation.
+  // Trigger typewriter when a new version arrives (AI generation, rollback).
+  // Using versionId as the trigger instead of value avoids restarts caused by
+  // re-renders from unrelated state changes (SSE phase events, refreshSnapshot).
   useEffect(() => {
     const view = viewRef.current;
-    if (!view) return;
+    if (!view || !versionId) return;
 
     const currentDoc = view.state.doc.toString();
-    if (value !== currentDoc && value !== editorValueRef.current) {
-      // If a typewriter is already animating to this exact code, don't restart
-      // it — the animation isn't done yet and a re-render raced in.
-      if (typewriterTargetRef.current === value) return;
+    if (value === currentDoc) return; // already showing this code
 
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (externalUpdateMode === "immediate" || reduceMotion) {
-        typewriterRef.current?.abort();
-        typewriterTargetRef.current = null;
-        typewritingRef.current = true;
-        view.dispatch({ changes: { from: 0, to: currentDoc.length, insert: value } });
-        typewritingRef.current = false;
-        editorValueRef.current = value;
-      } else {
-        void typewriteCode(view, value);
-      }
+    // If a typewriter is already animating to this exact code, skip
+    if (typewriterTargetRef.current === value) return;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (externalUpdateMode === "immediate" || reduceMotion) {
+      typewriterRef.current?.abort();
+      typewriterTargetRef.current = null;
+      typewritingRef.current = true;
+      view.dispatch({ changes: { from: 0, to: currentDoc.length, insert: value } });
+      typewritingRef.current = false;
+      editorValueRef.current = value;
+    } else {
+      void typewriteCode(view, value);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, externalUpdateMode]);
+  }, [versionId]);
 
   // Incremental change application with canvas erase/write animation
   const applyIncrementalChanges = useCallback(

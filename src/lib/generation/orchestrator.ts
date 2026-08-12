@@ -379,7 +379,7 @@ async function runGenerate(
     plan,
     examples,
   });
-  const code = await chatCompletion({
+  const rawCode = await chatCompletion({
     messages,
     model: route.model,
     max_tokens: route.maxTokens,
@@ -387,6 +387,9 @@ async function runGenerate(
     thinking: route.thinking,
     signal,
   });
+  // Strip markdown code fences the model may have wrapped the output in
+  const fenceMatch = rawCode.match(/```(?:python|py)?\s*\n?([\s\S]*?)```/);
+  const code = fenceMatch ? fenceMatch[1].trim() : rawCode.trim();
   await checkpoint(jobId, deps, expectedRunToken, signal);
   let version = await saveVersion(jobId, deps, code, "generated");
 
