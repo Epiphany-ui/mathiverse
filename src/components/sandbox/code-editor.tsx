@@ -114,6 +114,11 @@ export function CodeEditor({
   const typewriterRef = useRef<AbortController | null>(null);
   const typewritingRef = useRef(false);
   const canvasOverlayRef = useRef<HTMLDivElement>(null);
+  // The code the active typewriter is targeting.  When the same value
+  // arrives from a second dispatch (snapshot.received after refreshSnapshot
+  // races with version.created), we skip the restart so the animation isn't
+  // aborted and the user doesn't see a blank-then-instant-pop.
+  const typewriterTargetRef = useRef<string | null>(null);
 
   // Track value ONLY from editor changes — never sync from props
   const editorValueRef = useRef(value);
@@ -136,6 +141,7 @@ export function CodeEditor({
     async (view: EditorView, targetCode: string) => {
       // Cancel any ongoing typewriter
       typewriterRef.current?.abort();
+      typewriterTargetRef.current = targetCode;
       const controller = new AbortController();
       typewriterRef.current = controller;
       typewritingRef.current = true;
@@ -160,6 +166,7 @@ export function CodeEditor({
           // keystrokes typed during the animation) to the parent so nothing
           // is lost, and re-enable change propagation.
           typewritingRef.current = false;
+          typewriterTargetRef.current = null;
           const abortedDoc = view.state.doc.toString();
           editorValueRef.current = abortedDoc;
           onChangeRef.current?.(abortedDoc);
@@ -204,6 +211,7 @@ export function CodeEditor({
 
       // Sync final value to parent now that animation is complete
       typewritingRef.current = false;
+      typewriterTargetRef.current = null;
       const finalDoc = view.state.doc.toString();
       editorValueRef.current = finalDoc;
       onChangeRef.current?.(finalDoc);
@@ -272,9 +280,14 @@ export function CodeEditor({
 
     const currentDoc = view.state.doc.toString();
     if (value !== currentDoc && value !== editorValueRef.current) {
+      // If a typewriter is already animating to this exact code, don't restart
+      // it — the animation isn't done yet and a re-render raced in.
+      if (typewriterTargetRef.current === value) return;
+
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (externalUpdateMode === "immediate" || reduceMotion) {
         typewriterRef.current?.abort();
+        typewriterTargetRef.current = null;
         typewritingRef.current = true;
         view.dispatch({ changes: { from: 0, to: currentDoc.length, insert: value } });
         typewritingRef.current = false;
