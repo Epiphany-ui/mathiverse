@@ -1,7 +1,6 @@
 import { ConceptPrompt } from "@/components/home/concept-prompt";
 import { EditorialFeed } from "@/components/home/editorial-feed";
-import { ExhibitionIndex } from "@/components/home/exhibition-index";
-import { GalleryHero } from "@/components/home/gallery-hero";
+import { GallerySection } from "@/components/home/gallery-section";
 import {
   buildEditorialSlots,
   buildFieldLinks,
@@ -28,17 +27,25 @@ export default async function Home() {
   const slots = buildEditorialSlots(feedItems, feature);
   const fields = buildFieldLinks(feedItems);
 
+  // Carousel: featured item first, then up to 3 other visualizations with video
+  const carouselFeatures = [
+    ...(feature ? [feature] : []),
+    ...feedItems
+      .filter(
+        (f) =>
+          f.type === "visualization" &&
+          f.videoUrl &&
+          f.id !== feature?.id,
+      )
+      .slice(0, 3),
+  ];
+
   return (
     <div className={styles.page}>
       <RegisteredToast />
       <div className={styles.darkStage}>
         <AppHeader appearance="gallery" />
-        <GalleryHero feature={feature} />
-        <ExhibitionIndex
-          feature={feature}
-          next={slots.lead}
-          story={slots.story}
-        />
+        <GallerySection features={carouselFeatures} />
       </div>
       <main className={styles.lightStage}>
         <MathFieldMap fields={fields} />

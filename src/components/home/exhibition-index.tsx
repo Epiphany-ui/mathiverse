@@ -3,40 +3,81 @@ import type { FeedItem } from "@/types";
 import styles from "./home-gallery.module.css";
 
 interface ExhibitionIndexProps {
-  feature: FeedItem | null;
-  next: FeedItem | null;
-  story: FeedItem | null;
+  /** Same items passed to GalleryHero carousel (excluding fallback slide 0) */
+  features: FeedItem[];
+  /** Current carousel index (0 = cover/fallback, 1+ = features) */
+  currentIndex: number;
 }
 
 function itemHref(item: FeedItem): string {
   return item.type === "visualization" ? `/v/${item.id}` : `/a/${item.id}`;
 }
 
+/**
+ * Get the item at a given carousel position, wrapping around.
+ * Position 0 = cover (returns null), 1+ = features[position-1].
+ */
+function itemAt(features: FeedItem[], carouselPos: number): FeedItem | null {
+  if (carouselPos === 0) return null;
+  const idx = carouselPos - 1;
+  if (idx >= features.length) return null;
+  return features[idx] ?? null;
+}
+
 export function ExhibitionIndex({
-  feature,
-  next,
-  story,
+  features,
+  currentIndex,
 }: ExhibitionIndexProps) {
-  const entries = [
-    { label: "NOW SHOWING / 01", item: feature, fallback: "Living Mathematics" },
-    { label: "NEXT / 02", item: next, fallback: "Create the next study" },
-    { label: "COMMUNITY NOTE", item: story, fallback: "Ideas become motion" },
-  ];
+  const totalSlides = features.length + 1; // +1 for cover
+
+  const nowShowingPos = currentIndex;
+  const nextPos = (currentIndex + 1) % totalSlides;
+  const communityPos = (currentIndex + 2) % totalSlides;
+
+  const nowItem = itemAt(features, nowShowingPos);
+  const nextItem = itemAt(features, nextPos);
+  const communityItem = itemAt(features, communityPos);
+
+  const pad = (n: number) => String(n).padStart(2, "0");
 
   return (
     <section className={styles.exhibitionIndex} aria-label="展览索引">
-      {entries.map((entry) => (
-        <div className={styles.indexEntry} key={entry.label}>
-          <span className={styles.monoLabel}>{entry.label}</span>
-          {entry.item ? (
-            <Link className={styles.indexLink} href={itemHref(entry.item)}>
-              {entry.item.title}
-            </Link>
-          ) : (
-            <span className={styles.indexFallback}>{entry.fallback}</span>
-          )}
-        </div>
-      ))}
+      <div className={styles.indexEntry}>
+        <span className={styles.monoLabel}>
+          NOW SHOWING / {pad(nowShowingPos)}
+        </span>
+        {nowItem ? (
+          <Link className={styles.indexLink} href={itemHref(nowItem)}>
+            {nowItem.title}
+          </Link>
+        ) : (
+          <span className={styles.indexFallback}>Living Mathematics</span>
+        )}
+      </div>
+      <div className={styles.indexEntry}>
+        <span className={styles.monoLabel}>
+          NEXT / {pad(nextPos)}
+        </span>
+        {nextItem ? (
+          <Link className={styles.indexLink} href={itemHref(nextItem)}>
+            {nextItem.title}
+          </Link>
+        ) : (
+          <span className={styles.indexFallback}>Living Mathematics</span>
+        )}
+      </div>
+      <div className={styles.indexEntry}>
+        <span className={styles.monoLabel}>COMMUNITY NOTE</span>
+        {communityItem ? (
+          <Link className={styles.indexLink} href={itemHref(communityItem)}>
+            {communityItem.title}
+          </Link>
+        ) : (
+          <Link className={styles.indexLink} href="/explore">
+            探索社区精选
+          </Link>
+        )}
+      </div>
     </section>
   );
 }
