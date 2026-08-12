@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: mathiverse-renderer
+    env: docker
+    repo: https://github.com/Epiphany-ui/mathiverse
+    rootDir: renderer
+    plan: free
+    healthCheckPath: /health
