@@ -108,14 +108,7 @@ export function buildEditorialSlots(
   feature: FeedItem | null,
 ): EditorialSlots {
   const available = items.filter((item) => !sameItem(item, feature));
-  // Prefer items with real media (poster/cover/video) so the editorial
-  // artwork shows actual content rather than generative fallbacks.
-  const withMedia = (item: FeedItem) =>
-    Boolean(item.posterUrl || item.coverUrl || item.videoUrl);
   const lead =
-    available.find(
-      (item) => item.type === "visualization" && withMedia(item),
-    ) ??
     available.find((item) => item.type === "visualization") ??
     available[0] ??
     null;

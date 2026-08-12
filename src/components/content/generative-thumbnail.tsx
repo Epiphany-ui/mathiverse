@@ -5,7 +5,6 @@
  */
 
 import { cn } from "@/lib/utils";
-import katex from "katex";
 
 // Pastel tints per math domain — inspired by Notion's card-tint system
 const PALETTES: Record<string, { primary: string; secondary: string; bg: string; cardBg: string }> = {
@@ -56,7 +55,7 @@ function generateShapes(tags: string[]): { cx: number; cy: number; r: number; fi
       cy: 15 + ((seed >> 4) % 70),
       r: 8 + ((seed >> 8) % 40),
       fill: i % 2 === 0 ? palette.primary : palette.secondary,
-      opacity: 0.18 + ((seed >> 12) % 8) * 0.03,
+      opacity: 0.08 + ((seed >> 12) % 8) * 0.03,
     });
   }
 
@@ -96,39 +95,17 @@ function generateGrid(tags: string[]): { cols: number; rows: number; stroke: str
   };
 }
 
-function generateFormula(tags: string[]): { latex: string; x: number; y: number; color: string } {
+function generateFormula(tags: string[]): { text: string; x: number; y: number; color: string } | null {
   const hash = hashTag(tags.join(",") + "formula");
-  // Domain-aware formula when the tag maps to a known field, else a
-  // general-purpose LaTeX snippet.  Always shown so the card never looks
-  // empty — rendered with KaTeX.
-  const domainFormulas: Record<string, string> = {
-    calculus: String.raw`\int_a^b f(x)\,dx`,
-    geometry: String.raw`\pi r^2`,
-    algebra: String.raw`\det(A - \lambda I) = 0`,
-    probability: String.raw`P(A \mid B) = \frac{P(B \mid A)P(A)}{P(B)}`,
-    analysis: String.raw`f(x) = \sum_{n=1}^{\infty} a_n \sin(nx)`,
-    crypto: String.raw`y^2 = x^3 + ax + b`,
-    default: String.raw`e^{i\pi} + 1 = 0`,
-  };
-  const paletteName = Object.keys(PALETTES).find((key) => {
-    const mapping: Record<string, string> = {
-      "微积分": "calculus", "导数": "calculus", "积分": "calculus", "极限": "calculus",
-      "几何": "geometry", "图形": "geometry",
-      "代数": "algebra", "线性代数": "algebra", "矩阵": "algebra",
-      "概率": "probability", "统计": "probability", "正态分布": "probability",
-      "傅里叶": "analysis", "级数": "analysis",
-      "密码学": "crypto",
-    };
-    return tags.some((tag) =>
-      Object.entries(mapping).some(([keyword, name]) => tag.includes(keyword) && name === key),
-    );
-  });
-  const domain = paletteName ?? "default";
+  if (hash % 4 !== 0) return null;
+
+  const formulas = ["f(x)", "∑", "∫", "π", "e^{iθ}", "∇", "dx", "∞", "∂f/∂x", "lim", "det(A)", "ℝⁿ"];
+  const f = formulas[hash % formulas.length];
 
   return {
-    latex: domainFormulas[domain] ?? domainFormulas.default,
-    x: 12 + (hash % 60),
-    y: 20 + ((hash >> 4) % 50),
+    text: f,
+    x: 10 + (hash % 75),
+    y: 15 + ((hash >> 4) % 65),
     color: hash % 2 === 0 ? paletteForTags(tags).primary : paletteForTags(tags).secondary,
   };
 }
@@ -206,22 +183,21 @@ export function GenerativeThumbnail({ tags, className }: GenerativeThumbnailProp
         ))}
       </svg>
 
-      {/* Formula decoration — real KaTeX math, always present */}
-      <div
-        className="absolute select-none pointer-events-none"
-        style={{
-          left: `${formula.x}%`,
-          top: `${formula.y}%`,
-          color: formula.color,
-          opacity: 0.55,
-        }}
-        dangerouslySetInnerHTML={{
-          __html: katex.renderToString(formula.latex, {
-            throwOnError: false,
-            displayMode: true,
-          }),
-        }}
-      />
+      {/* Formula decoration */}
+      {formula && (
+        <div
+          className="absolute text-4xl font-serif italic select-none"
+          style={{
+            left: `${formula.x}%`,
+            top: `${formula.y}%`,
+            color: formula.color,
+            opacity: 0.2,
+            fontFamily: "var(--font-cormorant), Georgia, serif",
+          }}
+        >
+          {formula.text}
+        </div>
+      )}
     </div>
   );
 }

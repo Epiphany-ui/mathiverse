@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { ContentThumbnail } from "@/components/content/content-thumbnail";
-import { InlineMath } from "@/components/content/inline-math";
+import { GenerativeThumbnail } from "@/components/content/generative-thumbnail";
 import type { FeedItem } from "@/types";
 import type { EditorialSlots } from "./home-data";
 import styles from "./home-gallery.module.css";
@@ -21,10 +20,7 @@ function EditorialItem({
       <Link className={styles.editorialLink} href={itemHref(item)}>
         {variant !== "story" && (
           <div className={styles.editorialVisual}>
-            <ContentThumbnail
-              posterUrl={item.posterUrl}
-              coverUrl={item.coverUrl}
-              videoUrl={item.videoUrl}
+            <GenerativeThumbnail
               tags={item.tags}
               className={styles.editorialArtwork}
             />
@@ -34,14 +30,8 @@ function EditorialItem({
           <span className={styles.monoLabel}>
             {item.type === "visualization" ? "VISUAL STUDY" : "ESSAY"}
           </span>
-          <h3>
-            <InlineMath text={item.title} />
-          </h3>
-          {item.description && (
-            <p>
-              <InlineMath text={item.description} />
-            </p>
-          )}
+          <h3>{item.title}</h3>
+          {item.description && <p>{item.description}</p>}
           <span className={styles.editorialAuthor}>{item.author.displayName}</span>
         </div>
       </Link>

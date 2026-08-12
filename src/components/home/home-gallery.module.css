@@ -137,28 +137,15 @@
 }
 
 .heroMedia,
-.heroVideo,
-.heroPoster {
+.heroVideo {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.heroVideo,
-.heroPoster {
-  object-fit: cover;
-}
-
-/* Video starts invisible and fades in only when playback actually begins —
-   while buffering, the real poster frame (or fallback art) stays visible. */
 .heroVideo {
-  opacity: 0;
-  transition: opacity 600ms ease;
-}
-
-.heroVideoVisible {
-  opacity: 1;
+  object-fit: cover;
 }
 
 .heroScrim {
