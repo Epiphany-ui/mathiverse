@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { GlassCard } from "@/components/shared/glass-card";
 import { TiltCard } from "@/components/shared/tilt-card";
-import { GenerativeThumbnail } from "@/components/content/generative-thumbnail";
+import { ContentThumbnail } from "@/components/content/content-thumbnail";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Heart,
@@ -112,7 +112,12 @@ function VizCard({ item, href, className }: { item: FeedItem; href: string; clas
         >
           {/* Thumbnail */}
           <div className="relative aspect-[16/10] rounded-t-xl overflow-hidden">
-            <GenerativeThumbnail tags={item.tags} className="absolute inset-0" />
+            <ContentThumbnail
+              posterUrl={item.posterUrl}
+              videoUrl={item.videoUrl}
+              tags={item.tags}
+              className="absolute inset-0"
+            />
             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-16 h-16 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-white transition-all duration-300 group-hover:shadow-xl">
@@ -210,7 +215,11 @@ function ArticleCard({ item, href, className }: { item: FeedItem; href: string; 
             </div>
           </div>
           <div className="w-32 shrink-0 relative overflow-hidden border-l border-[#e6dfd8]/50">
-            <GenerativeThumbnail tags={item.tags} className="absolute inset-0" />
+            <ContentThumbnail
+              coverUrl={item.coverUrl}
+              tags={item.tags}
+              className="absolute inset-0"
+            />
             <div className="absolute inset-0 bg-gradient-to-l from-transparent to-[#efe9de]/40 pointer-events-none" />
           </div>
         </div>

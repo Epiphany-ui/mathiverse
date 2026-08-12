@@ -63,6 +63,8 @@ export interface ValidationResult {
 
 export interface RenderArtifact {
   url: string;
+  /** Poster frame URL when the renderer generated one (mp4 only). */
+  posterUrl?: string | null;
   format: "mp4" | "gif";
   quality: "-ql" | "-qm" | "-qh" | "-qk";
   duration: number | null;

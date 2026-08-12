@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GenerativeThumbnail } from "@/components/content/generative-thumbnail";
+import { ContentThumbnail } from "@/components/content/content-thumbnail";
 import type { FeedItem } from "@/types";
 import type { EditorialSlots } from "./home-data";
 import styles from "./home-gallery.module.css";
@@ -20,7 +20,10 @@ function EditorialItem({
       <Link className={styles.editorialLink} href={itemHref(item)}>
         {variant !== "story" && (
           <div className={styles.editorialVisual}>
-            <GenerativeThumbnail
+            <ContentThumbnail
+              posterUrl={item.posterUrl}
+              coverUrl={item.coverUrl}
+              videoUrl={item.videoUrl}
               tags={item.tags}
               className={styles.editorialArtwork}
             />

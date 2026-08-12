@@ -40,6 +40,15 @@ except ModuleNotFoundError:  # Supports `cd renderer && python server.py`.
 
 HOST = os.environ.get("RENDER_HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "9876"))
+# ffmpeg/ffprobe may live in the venv bin dir (not on PATH when the venv
+# wasn't activated).  Resolve them relative to the running interpreter.
+_VENV_BIN = Path(sys.executable).parent
+_FFMPEG = shutil.which("ffmpeg") or (
+    str(_VENV_BIN / "ffmpeg") if (_VENV_BIN / "ffmpeg").is_file() else "ffmpeg"
+)
+_FFPROBE = shutil.which("ffprobe") or (
+    str(_VENV_BIN / "ffprobe") if (_VENV_BIN / "ffprobe").is_file() else "ffprobe"
+)
 # Public base URL for artifact links returned to clients.  Must be reachable
 # from browsers / Next.js server.  Resolution order:
 #   1. RENDERER_PUBLIC_URL (explicit override)
@@ -121,6 +130,7 @@ class RenderResponse(BaseModel):
     success: bool
     video_url: str | None = None
     gif_url: str | None = None
+    poster_url: str | None = None
     duration: float | None = None
     error: str | None = None
     diagnostics: list[ValidationIssueModel] = Field(default_factory=list)
@@ -169,6 +179,50 @@ def _cached_path(render_key: str, scene_name: str, fmt: str) -> Path:
     return OUTPUT_DIR / render_key / f"{scene_name}.{fmt}"
 
 
+def _poster_path(video_path: Path) -> Path:
+    return video_path.with_suffix(".poster.jpg")
+
+
+def _generate_poster(video_path: Path) -> Path | None:
+    """Extract a representative frame from the video as a JPEG poster.
+
+    Uses the frame at 1 second (or 0.5s for very short clips) so the
+    poster shows actual content instead of the often-blank first frame.
+    Skips regeneration when the poster already exists (cache hits).
+    """
+    poster = _poster_path(video_path)
+    if poster.is_file():
+        return poster
+    try:
+        duration = estimate_duration(video_path)
+        at = max(0.0, min(1.0, (duration or 2.0) * 0.5))
+        result = subprocess.run(
+            [
+                _FFMPEG,
+                "-y",
+                "-ss",
+                f"{at:.2f}",
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "3",
+                str(poster),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0 or not poster.is_file():
+            LOGGER.warning("Poster generation failed: %s", (result.stderr or "")[:300])
+            return None
+        return poster
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def _artifact_response(
     path: Path,
     fmt: str,
@@ -179,10 +233,20 @@ def _artifact_response(
 ) -> RenderResponse:
     relative = path.relative_to(OUTPUT_DIR).as_posix()
     url = f"{PUBLIC_URL}/output/{relative}"
+
+    # Generate/refresh the poster alongside the video (mp4 only).
+    poster_url: str | None = None
+    if fmt == "mp4":
+        poster = _generate_poster(path)
+        if poster is not None:
+            poster_rel = poster.relative_to(OUTPUT_DIR).as_posix()
+            poster_url = f"{PUBLIC_URL}/output/{poster_rel}"
+
     return RenderResponse(
         success=True,
         video_url=url if fmt == "mp4" else None,
         gif_url=url if fmt == "gif" else None,
+        poster_url=poster_url,
         duration=estimate_duration(path),
         scene_name=scene_name,
         render_key=render_key,
@@ -412,7 +476,7 @@ def estimate_duration(filepath: Path) -> float | None:
     try:
         result = subprocess.run(
             [
-                "ffprobe",
+                _FFPROBE,
                 "-v",
                 "error",
                 "-show_entries",

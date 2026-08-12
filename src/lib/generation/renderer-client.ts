@@ -61,6 +61,7 @@ interface RawRenderResponse {
   success: boolean;
   video_url: string | null;
   gif_url: string | null;
+  poster_url: string | null;
   duration: number | null;
   error: string | null;
   diagnostics: RawValidationIssue[];
@@ -245,6 +246,7 @@ export function createRendererClient(options?: {
 
       return {
         url: data.video_url ?? data.gif_url ?? "",
+        posterUrl: data.poster_url ?? null,
         format,
         quality,
         duration: data.duration ?? null,

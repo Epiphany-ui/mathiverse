@@ -13,6 +13,7 @@ interface PublishDialogProps {
   open: boolean;
   code: string;
   videoUrl: string | null;
+  posterUrl?: string | null;
   forkedFrom?: string | null;
   onClose: () => void;
 }
@@ -21,6 +22,7 @@ export function PublishDialog({
   open,
   code,
   videoUrl,
+  posterUrl,
   forkedFrom,
   onClose,
 }: PublishDialogProps) {
@@ -93,6 +95,7 @@ export function PublishDialog({
             .filter(Boolean),
           sourceCode: code,
           videoUrl: videoUrl,
+          posterUrl: posterUrl ?? null,
           forkedFrom: forkedFrom ?? null,
         }),
       });

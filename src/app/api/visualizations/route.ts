@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   ensureStorageBucket,
-  uploadVideoToStorage,
+  uploadToStorage,
 } from "@/lib/supabase/admin";
 import { isLocalRendererUrl } from "@/lib/utils";
 
@@ -19,33 +19,35 @@ export const runtime = "nodejs";
 const STORAGE_BUCKET = "renders";
 
 /**
- * Fetch the video from the local renderer and upload to Supabase Storage.
+ * Fetch a media file from the renderer and upload to Supabase Storage.
  * Returns the Supabase public URL, or null if the upload fails.
  */
-async function persistVideo(url: string): Promise<string | null> {
+async function persistMedia(url: string): Promise<string | null> {
   // Extract filename from renderer URL like http://127.0.0.1:9876/output/abc_Scene.mp4
   const filename = url.split("/").pop();
   if (!filename) return null;
 
   try {
-    // Fetch video from local renderer
+    // Fetch media from the renderer
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) {
-      console.warn(`[visualizations] Failed to fetch video from renderer: ${res.status}`);
+      console.warn(`[visualizations] Failed to fetch media from renderer: ${res.status}`);
       return null;
     }
 
     const buffer = Buffer.from(await res.arrayBuffer());
     const mimeType = filename.endsWith(".gif")
       ? "image/gif"
-      : "video/mp4";
+      : filename.endsWith(".jpg") || filename.endsWith(".jpeg")
+        ? "image/jpeg"
+        : "video/mp4";
 
     // Ensure bucket exists
     const bucketReady = await ensureStorageBucket(STORAGE_BUCKET);
     if (!bucketReady) return null;
 
     // Upload to Supabase Storage
-    const publicUrl = await uploadVideoToStorage(
+    const publicUrl = await uploadToStorage(
       STORAGE_BUCKET,
       filename,
       buffer,
@@ -54,7 +56,7 @@ async function persistVideo(url: string): Promise<string | null> {
 
     return publicUrl;
   } catch (err) {
-    console.warn("[visualizations] Video persistence failed:", err);
+    console.warn("[visualizations] Media persistence failed:", err);
     return null;
   }
 }
@@ -114,24 +116,36 @@ export async function POST(request: NextRequest) {
         )
       : [];
 
-    // If the video is from the local renderer, upload it to Supabase Storage
+    // If the video is from the renderer, upload it to Supabase Storage
     // so it's persistently accessible (not tied to the renderer process).
     let videoPersisted = false;
     let persistedVideoUrl = videoUrl;
     if (typeof videoUrl === "string" && isLocalRendererUrl(videoUrl)) {
-      const uploadResult = await persistVideo(videoUrl);
+      const uploadResult = await persistMedia(videoUrl);
       if (uploadResult) {
         persistedVideoUrl = uploadResult;
         videoPersisted = true;
         console.log("[visualizations] Video persisted to Supabase Storage");
       } else {
-        // Local renderer URL won't work in production.  Drop the video so
+        // Renderer URL won't work in production.  Drop the video so
         // the published viz shows as code-only rather than a broken player.
         persistedVideoUrl = null;
         console.warn(
           "[visualizations] Video persistence failed — published without video. " +
             "Check SUPABASE_SERVICE_ROLE_KEY and renderer connectivity.",
         );
+      }
+    }
+
+    // Persist the poster image too (renderer-generated frame at ~1s).
+    let persistedPosterUrl = posterUrl;
+    if (typeof posterUrl === "string" && isLocalRendererUrl(posterUrl)) {
+      const posterResult = await persistMedia(posterUrl);
+      if (posterResult) {
+        persistedPosterUrl = posterResult;
+        console.log("[visualizations] Poster persisted to Supabase Storage");
+      } else {
+        persistedPosterUrl = null;
       }
     }
 
@@ -143,7 +157,7 @@ export async function POST(request: NextRequest) {
         tags: cleanTags,
         source_code: sourceCode,
         video_url: persistedVideoUrl,
-        poster_url: posterUrl,
+        poster_url: persistedPosterUrl,
         author_id: user.id,
         forked_from: forkedFrom,
         is_published: true,

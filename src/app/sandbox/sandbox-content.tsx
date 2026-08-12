@@ -109,6 +109,7 @@ export function SandboxContent({ forkId, initialPrompt, jobId }: SandboxContentP
   }, [activeJobId, entrance]);
 
   const videoUrl = controller.state.snapshot?.render?.url ?? null;
+  const posterUrl = controller.state.snapshot?.render?.posterUrl ?? null;
   return (
     <div className="studio-entrance-shell min-h-screen bg-[#071012]" {...(entrance ? { "data-studio-entrance": entrance } : {})}>
       <AppHeader appearance="studio" />
@@ -119,6 +120,7 @@ export function SandboxContent({ forkId, initialPrompt, jobId }: SandboxContentP
         open={publishOpen}
         code={controller.state.editorCode}
         videoUrl={videoUrl}
+        posterUrl={posterUrl}
         forkedFrom={forkedFrom}
         onClose={() => setPublishOpen(false)}
       />
