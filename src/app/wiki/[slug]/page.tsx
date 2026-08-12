@@ -142,6 +142,10 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
   const entry = await resolveWikiEntry(supabase, slug);
   if (!entry) notFound();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   // Parallelize: comments, knowledge graph, and related entries are all independent
   const [comments, graphData, related] = await Promise.all([
     getCommentsForTarget(supabase, "wiki", entry.id),
@@ -328,6 +332,7 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
                 slug={entry.slug}
                 title={entry.title}
                 bodyMd={entry.bodyMd}
+                isAuthenticated={Boolean(user)}
               />
             </div>
           </article>

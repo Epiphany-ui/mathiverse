@@ -13,6 +13,7 @@ import {
   createRendererClient,
   RendererError,
 } from "@/lib/generation/renderer-client";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,16 @@ function jsonResponse(data: unknown, status = 200) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Require login — rendering consumes the renderer service
+    const supabase = await createClient();
+    if (!supabase) {
+      return jsonResponse({ error: "Supabase 未配置" }, 503);
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return jsonResponse({ error: "请先登录后再渲染动画" }, 401);
+    }
+
     const body = (await request.json()) as {
       code?: unknown;
       quality?: unknown;

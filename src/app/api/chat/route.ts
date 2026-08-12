@@ -12,11 +12,28 @@
 import { NextRequest } from "next/server";
 import { chatCompletionStream, isConfigured, MODELS } from "@/lib/ai/client";
 import { buildMessages } from "@/lib/ai/prompts";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
+    // Require login — AI calls consume API quota
+    const supabase = await createClient();
+    if (!supabase) {
+      return new Response(
+        JSON.stringify({ error: "Supabase 未配置" }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: "请先登录后再使用生成功能" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     const body = await request.json();
     const messages = body.messages ?? [];
     const currentCode = (body.currentCode as string) ?? undefined;

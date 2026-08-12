@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { MarkdownRenderer } from "@/components/content/markdown-renderer";
 import { TextSelectionTooltip } from "./text-selection-tooltip";
 import { AnimationCard } from "./animation-card";
@@ -10,6 +11,7 @@ interface WikiBodyProps {
   slug: string;
   title: string;
   bodyMd: string;
+  isAuthenticated: boolean;
 }
 
 interface CardInstance {
@@ -24,7 +26,8 @@ interface CardRequest {
   anchor: Node | null;
 }
 
-export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
+export function WikiBody({ slug, title, bodyMd, isAuthenticated }: WikiBodyProps) {
+  const router = useRouter();
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [cards, setCards] = useState<CardInstance[]>([]);
   // Track portal containers — created once, cleaned up on removal
@@ -107,6 +110,14 @@ export function WikiBody({ slug, title, bodyMd }: WikiBodyProps) {
       <TextSelectionTooltip
         containerRef={bodyRef}
         onAnimate={({ text, anchor }) => {
+          // Generating an animation consumes AI + renderer quota — prompt
+          // unauthenticated users to log in first.
+          if (!isAuthenticated) {
+            router.push(
+              `/auth/login?redirect=${encodeURIComponent(`/wiki/${slug}`)}`,
+            );
+            return;
+          }
           const prompt = `为"${title}"中的概念生成 Manim 动画：\n"${text}"`;
           addCard({
             id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
