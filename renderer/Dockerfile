@@ -1,6 +1,9 @@
 FROM manimcommunity/manim:v0.21.0
 
-# Install FastAPI + uvicorn
+# The base image's /opt/venv is owned by its non-root user, so pip must
+# run as root to install into it.  The container then runs as root too —
+# fine for Render's free tier.
+USER root
 RUN pip install --no-cache-dir fastapi uvicorn && python -c "import uvicorn; print('uvicorn OK')"
 
 WORKDIR /app
