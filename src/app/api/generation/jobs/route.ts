@@ -61,13 +61,30 @@ export async function POST(request: Request) {
   const store = getGenerationJobStore();
   const active = await store.getActiveJob(owner);
   if (active) {
-    return NextResponse.json(
-      {
-        error: "已有正在进行的生成任务，请等待完成或取消后再提交。",
-        activeJobId: active.id,
-      },
-      { status: 409 },
-    );
+    // If the active job hasn't been updated in 5 minutes, the pipeline
+    // that owns it was killed (Vercel eviction / timeout / crash).  Auto-
+    // fail it so the user isn't locked out of submitting new work.
+    const STALE_MS = 5 * 60 * 1_000;
+    const age = Date.now() - new Date(active.updatedAt).getTime();
+    if (age > STALE_MS && active.durability === "persistent") {
+      await store.updateJob(active.id, {
+        status: "failed",
+        failureReason: "interrupted",
+        cancelRequested: false,
+      });
+      await store.appendEvent(active.id, {
+        type: "job.failed",
+        data: { reason: "interrupted", message: "之前的任务因超时中断，请重试。", retryable: true },
+      });
+    } else {
+      return NextResponse.json(
+        {
+          error: "已有正在进行的生成任务，请等待完成或取消后再提交。",
+          activeJobId: active.id,
+        },
+        { status: 409 },
+      );
+    }
   }
 
   // Persist acceptance first, then start bounded background work without
