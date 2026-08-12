@@ -59,7 +59,7 @@ export function StudioShell({ controller, initialPrompt, onOpenPublish }: { cont
           {canvasState === "error" && <div className="errorCanvas"><AlertTriangle /><strong>预览尚未生成</strong><p>{mediaError ? "视频加载失败，请重新渲染。" : state.snapshot?.failureReason ?? "检查代码后重试或使用自动修复。"}</p><button type="button" onClick={() => void controller.retry()}>重新尝试</button></div>}
         </div>
       </section>
-      <VersionStrip versions={state.snapshot?.versions ?? []} selectedId={state.selectedVersionId} onSelect={controller.selectVersion} />
+      <VersionStrip versions={state.snapshot?.versions ?? []} selectedId={state.selectedVersionId} onSelect={(v) => { void controller.rollback(v.id); }} />
     </div>
     <section className={styles.codePanel} data-studio-motion-layer="code" aria-label="Manim 代码">
       <div className={styles.codeHead}><span>CODE / 03</span><b>scene.py</b><button type="button" onClick={() => void controller.saveManualVersion()}>保存版本</button></div>
