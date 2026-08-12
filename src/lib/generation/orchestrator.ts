@@ -364,7 +364,7 @@ async function runGenerate(
     {
       minSimilarity: 0.72,
       dimension: plan.layout,
-      manimVersion: "0.20.1",
+      manimVersion: "0.21.0",
       maxDifficulty: 3,
     },
   );

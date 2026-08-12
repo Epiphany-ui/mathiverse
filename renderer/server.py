@@ -40,6 +40,13 @@ except ModuleNotFoundError:  # Supports `cd renderer && python server.py`.
 
 HOST = os.environ.get("RENDER_HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "9876"))
+# Public base URL for artifact links returned to clients.  Must be reachable
+# from browsers / Next.js server.  Resolution order:
+#   1. RENDERER_PUBLIC_URL (explicit override)
+#   2. RENDER_EXTERNAL_URL (auto-set by Render.com — includes https:// prefix)
+#   3. http://127.0.0.1:{PORT} (local dev fallback)
+_PUBLIC = os.environ.get("RENDERER_PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL")
+PUBLIC_URL = _PUBLIC.rstrip("/") if _PUBLIC else f"http://127.0.0.1:{PORT}"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "mathiverse-renderer"
 STAGING_DIR = OUTPUT_DIR / ".staging"
 MANIM_TIMEOUT = 120
@@ -171,7 +178,7 @@ def _artifact_response(
     cache_hit: bool,
 ) -> RenderResponse:
     relative = path.relative_to(OUTPUT_DIR).as_posix()
-    url = f"http://{HOST}:{PORT}/output/{relative}"
+    url = f"{PUBLIC_URL}/output/{relative}"
     return RenderResponse(
         success=True,
         video_url=url if fmt == "mp4" else None,
@@ -536,7 +543,7 @@ async def list_outputs() -> dict[str, list[dict[str, str | int]]]:
                 {
                     "name": relative,
                     "size": path.stat().st_size,
-                    "url": f"http://{HOST}:{PORT}/output/{relative}",
+                    "url": f"{PUBLIC_URL}/output/{relative}",
                 }
             )
         return files
@@ -549,7 +556,8 @@ if __name__ == "__main__":
 
     print("=" * 56)
     print("  Mathiverse Local Renderer")
-    print(f"  http://{HOST}:{PORT}")
+    print(f"  Listening: http://{HOST}:{PORT}")
+    print(f"  Public URL: {PUBLIC_URL}")
     print(f"  Output dir: {OUTPUT_DIR}")
     print("=" * 56)
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")

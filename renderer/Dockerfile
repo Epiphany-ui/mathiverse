@@ -1,4 +1,4 @@
-FROM manimcommunity/manim:v0.19.0
+FROM manimcommunity/manim:v0.21.0
 
 # Install FastAPI + uvicorn
 RUN pip install --no-cache-dir fastapi uvicorn && python -c "import uvicorn; print('uvicorn OK')"
