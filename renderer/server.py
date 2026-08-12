@@ -38,7 +38,7 @@ except ModuleNotFoundError:  # Supports `cd renderer && python server.py`.
     )
 
 
-HOST = "127.0.0.1"
+HOST = os.environ.get("RENDER_HOST", "127.0.0.1")
 PORT = 9876
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "mathiverse-renderer"
 STAGING_DIR = OUTPUT_DIR / ".staging"
