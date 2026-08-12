@@ -47,14 +47,32 @@ export async function ensureStorageBucket(
       return false;
     }
 
+    const DEFAULT_MIME_TYPES = [
+      "video/mp4",
+      "video/webm",
+      "image/gif",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+    ];
+    const allowedMimeTypes = opts?.allowedMimeTypes ?? DEFAULT_MIME_TYPES;
+
     const exists = buckets?.some((b) => b.name === bucketName);
-    if (exists) return true;
+    if (exists) {
+      // Keep the bucket config up to date — older buckets may have been
+      // created before poster images were supported.
+      await client.storage.updateBucket(bucketName, {
+        public: true,
+        allowedMimeTypes,
+      });
+      return true;
+    }
 
     // Create the bucket (public so files are directly accessible)
     const { error: createErr } = await client.storage.createBucket(bucketName, {
       public: true,
       fileSizeLimit: opts?.fileSizeLimit ?? 50 * 1024 * 1024, // 50 MB — Supabase free tier limit
-      allowedMimeTypes: opts?.allowedMimeTypes ?? ["video/mp4", "video/webm", "image/gif"],
+      allowedMimeTypes,
     });
 
     if (createErr) {

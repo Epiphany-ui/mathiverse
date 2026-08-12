@@ -186,22 +186,20 @@ def _poster_path(video_path: Path) -> Path:
 def _generate_poster(video_path: Path) -> Path | None:
     """Extract a representative frame from the video as a JPEG poster.
 
-    Uses the frame at 1 second (or 0.5s for very short clips) so the
-    poster shows actual content instead of the often-blank first frame.
+    Manim scenes usually start with a black fade-in, so the last frame
+    (0.5s before the end via -sseof) shows the complete scene.
     Skips regeneration when the poster already exists (cache hits).
     """
     poster = _poster_path(video_path)
     if poster.is_file():
         return poster
     try:
-        duration = estimate_duration(video_path)
-        at = max(0.0, min(1.0, (duration or 2.0) * 0.5))
         result = subprocess.run(
             [
                 _FFMPEG,
                 "-y",
-                "-ss",
-                f"{at:.2f}",
+                "-sseof",
+                "-0.5",
                 "-i",
                 str(video_path),
                 "-frames:v",
@@ -215,6 +213,29 @@ def _generate_poster(video_path: Path) -> Path | None:
             timeout=30,
             check=False,
         )
+        if result.returncode != 0 or not poster.is_file():
+            # Fallback: midpoint frame for very short or odd videos
+            duration = estimate_duration(video_path) or 2.0
+            at = max(0.0, duration * 0.5)
+            result = subprocess.run(
+                [
+                    _FFMPEG,
+                    "-y",
+                    "-ss",
+                    f"{at:.2f}",
+                    "-i",
+                    str(video_path),
+                    "-frames:v",
+                    "1",
+                    "-q:v",
+                    "3",
+                    str(poster),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
         if result.returncode != 0 or not poster.is_file():
             LOGGER.warning("Poster generation failed: %s", (result.stderr or "")[:300])
             return None
