@@ -117,19 +117,19 @@ export function CodeEditor({
 
   // Track value ONLY from editor changes — never sync from props
   const editorValueRef = useRef(value);
+  // Stable ref for callbacks so typewriteCode identity doesn't change on every
+  // render (which would re-trigger the useEffect and abort the animation).
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-  const handleChange = useCallback(
-    (val: string) => {
-      editorValueRef.current = val;
-      // Suppress onChange during typewriter animation to prevent
-      // the doc-clear step from triggering a setCode("") that
-      // re-enters the useEffect and spawns a racing typewriter.
-      if (!typewritingRef.current) {
-        onChange?.(val);
-      }
-    },
-    [onChange],
-  );
+  const handleChange = useCallback((val: string) => {
+    editorValueRef.current = val;
+    // Suppress onChange during typewriter animation to prevent the doc-clear
+    // step from triggering a setCode("") that re-enters useEffect.
+    if (!typewritingRef.current) {
+      onChangeRef.current?.(val);
+    }
+  }, []);
 
   // Typewriter: erase canvas → paint new code character by character
   const typewriteCode = useCallback(
@@ -162,7 +162,7 @@ export function CodeEditor({
           typewritingRef.current = false;
           const abortedDoc = view.state.doc.toString();
           editorValueRef.current = abortedDoc;
-          onChange?.(abortedDoc);
+          onChangeRef.current?.(abortedDoc);
           return;
         }
 
@@ -206,9 +206,9 @@ export function CodeEditor({
       typewritingRef.current = false;
       const finalDoc = view.state.doc.toString();
       editorValueRef.current = finalDoc;
-      onChange?.(finalDoc);
+      onChangeRef.current?.(finalDoc);
     },
-    [onChange],
+    [],
   );
 
   useEffect(() => {
@@ -263,7 +263,9 @@ export function CodeEditor({
     };
   }, []); // Only create once
 
-  // Handle external value changes (e.g. AI generated code)
+  // Handle external value changes (e.g. AI generated code).
+  // typewriteCode is intentionally omitted from deps — it's stable (useCallback
+  // with []) via onChangeRef so it never retriggers this effect mid-animation.
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -281,7 +283,8 @@ export function CodeEditor({
         void typewriteCode(view, value);
       }
     }
-  }, [value, typewriteCode, externalUpdateMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, externalUpdateMode]);
 
   // Incremental change application with canvas erase/write animation
   const applyIncrementalChanges = useCallback(
