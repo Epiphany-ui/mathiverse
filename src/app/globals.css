@@ -309,6 +309,9 @@ blockquote.book-quote::before {
 .prose-custom .katex-display { margin: 1.25rem 0; overflow-x: auto; overflow-y: hidden; text-align: center; }
 .prose-custom .katex { font-size: 1.08em; }
 .prose-custom .katex-display > .katex { font-size: 1.15em; }
+/* Inline math inside headings/cards (InlineMath component) */
+.inline-math .katex { font-size: 1em; }
+.inline-math { white-space: normal; }
 
 
 /* ─── Card System (replaces glassmorphism) ─── */
