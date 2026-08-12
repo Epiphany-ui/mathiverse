@@ -1,5 +1,5 @@
 // POST /api/generation/jobs — create a new generation job
-// GET /api/generation/jobs — list active jobs for the current owner
+// GET /api/generation/jobs — return the current owner's active (queued/running) job
 
 import { NextResponse } from "next/server";
 import { resolveRequestOwner } from "@/lib/generation/request-owner";
@@ -8,9 +8,32 @@ import { ensureGenerationStarted } from "@/lib/generation/orchestrator";
 import { getGenerationJobStore } from "@/lib/generation/job-store";
 import { createRendererClient } from "@/lib/generation/renderer-client";
 
-export async function POST(request: Request) {
-  // Resolve owner
+export async function GET() {
   const { owner, error } = await resolveRequestOwner();
+  if (!owner) {
+    return NextResponse.json(
+      { error: error?.message ?? "无法识别用户" },
+      { status: error?.status ?? 401 },
+    );
+  }
+
+  const store = getGenerationJobStore();
+
+  // Prefer an active (queued/running) job so the client can resume SSE.
+  const active = await store.getActiveJob(owner);
+  if (active) return NextResponse.json(active);
+
+  // Fall back to the most recent job (any status) so the client can at
+  // least display the result after navigating back to a finished job.
+  const recent = await store.getMostRecentJob(owner);
+  if (!recent) return new NextResponse(null, { status: 204 });
+
+  return NextResponse.json(recent);
+}
+
+export async function POST(request: Request) {
+  // Require login for generation (protects API key quota)
+  const { owner, error } = await resolveRequestOwner({ requireAuth: true });
   if (!owner) {
     return NextResponse.json(
       { error: error?.message ?? "无法识别用户" },
@@ -52,6 +75,19 @@ export async function POST(request: Request) {
   try {
     const renderer = createRendererClient();
     const job = await store.createJob(owner, result.input);
+
+    // Save the client's current code as a manual version BEFORE starting the
+    // pipeline so that render/repair operations see the user's edits (e.g.,
+    // after takeover).  generate operations produce their own version later.
+    if (result.input.currentCode && result.input.currentCode.trim().length > 0) {
+      await store.saveVersion(job.id, {
+        source: "manual",
+        code: result.input.currentCode,
+        validation: null,
+        render: null,
+      });
+    }
+
     await store.appendEvent(job.id, {
       type: "job.accepted",
       data: { snapshot: job },

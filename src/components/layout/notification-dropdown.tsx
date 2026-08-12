@@ -199,7 +199,7 @@ export function NotificationDropdown({
             <DropdownMenuItem
               className="justify-center text-xs text-muted-foreground"
               onClick={() => {
-                window.location.href = "/settings";
+                window.location.href = "/settings/notifications";
               }}
             >
               查看全部

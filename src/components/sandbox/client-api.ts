@@ -46,6 +46,12 @@ export async function getGenerationJob(jobId: string) {
   );
 }
 
+export async function getActiveGenerationJob(): Promise<GenerationJobSnapshot | null> {
+  const response = await fetch("/api/generation/jobs", { cache: "no-store" });
+  if (response.status === 204) return null;
+  return readJson<GenerationJobSnapshot>(response);
+}
+
 export async function patchGenerationJob(jobId: string, action: GenerationAction) {
   return readJson<{ success: true; version?: GenerationVersion; message?: string }>(
     await fetch(`/api/generation/jobs/${encodeURIComponent(jobId)}`, {

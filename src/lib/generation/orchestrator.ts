@@ -135,13 +135,24 @@ async function checkpoint(
   return job;
 }
 
-/** Resolve the code to operate on: the job's own version, else its parent's. */
+/**
+ * Resolve the code to operate on: the job's own version, else the client's
+ * currentCode (persisted as a manual version first), else the parent's.
+ */
 async function resolveCurrentVersion(
   job: GenerationJobSnapshot,
   deps: GenerationDependencies,
+  currentCode: string | null = null,
 ): Promise<{ code: string; versionId: string } | null> {
   if (job.currentVersion) {
     return { code: job.currentVersion.code, versionId: job.currentVersion.id };
+  }
+  // No stored version yet (fresh render/repair job): the client's currentCode
+  // is authoritative — save it as a version first so validation/render
+  // results attach to a version owned by this job.
+  if (currentCode && currentCode.trim().length > 0) {
+    const version = await saveVersion(job.id, deps, currentCode, "manual");
+    return { code: version.code, versionId: version.id };
   }
   if (job.parentJobId) {
     const parent = await deps.store.getJobById(job.parentJobId);
@@ -265,6 +276,10 @@ async function attemptValidateAndRender(
       });
       await checkpoint(jobId, deps, expectedRunToken, signal);
       await deps.store.updateVersion(jobId, versionId, { render: artifact });
+      await emitEvent(jobId, deps, {
+        type: "render.completed",
+        data: { artifact },
+      });
       return { kind: "completed", artifact };
     } catch (err) {
       // Best effort: tell the renderer to stop the subprocess.
@@ -335,7 +350,7 @@ async function runGenerate(
   // 1. Structured scene planning (fast model, no reasoning).
   await setPhase(jobId, deps, "planning");
   const currentCode = await resolveCurrentCode(job, deps);
-  const plan = await planScene(prompt, currentCode);
+  const plan = await planScene(prompt, currentCode, signal);
   await checkpoint(jobId, deps, expectedRunToken, signal);
   await deps.store.updateJob(jobId, { scenePlan: plan });
   await emitEvent(jobId, deps, { type: "plan.ready", data: { plan } });
@@ -349,7 +364,7 @@ async function runGenerate(
     {
       minSimilarity: 0.72,
       dimension: plan.layout,
-      manimVersion: "0.19",
+      manimVersion: "0.20.1",
       maxDifficulty: 3,
     },
   );
@@ -370,6 +385,7 @@ async function runGenerate(
     max_tokens: route.maxTokens,
     reasoning_effort: route.reasoningEffort,
     thinking: route.thinking,
+    signal,
   });
   await checkpoint(jobId, deps, expectedRunToken, signal);
   let version = await saveVersion(jobId, deps, code, "generated");
@@ -438,10 +454,11 @@ async function runRenderOnly(
   controller: AbortController,
   expectedRunToken: number,
   operation: "render" | "high_quality_render",
+  currentCode: string | null = null,
 ): Promise<void> {
   const signal = controller.signal;
   const job = await checkpoint(jobId, deps, expectedRunToken, signal);
-  const current = await resolveCurrentVersion(job, deps);
+  const current = await resolveCurrentVersion(job, deps, currentCode);
   if (!current) {
     await failJob(jobId, deps, "no_code", "没有可渲染的代码版本。", true);
     return;
@@ -483,10 +500,11 @@ async function runManualRepair(
   deps: GenerationDependencies,
   controller: AbortController,
   expectedRunToken: number,
+  currentCode: string | null = null,
 ): Promise<void> {
   const signal = controller.signal;
   const job = await checkpoint(jobId, deps, expectedRunToken, signal);
-  const current = await resolveCurrentVersion(job, deps);
+  const current = await resolveCurrentVersion(job, deps, currentCode);
   if (!current) {
     await failJob(jobId, deps, "no_code", "没有可修复的代码版本。", true);
     return;
@@ -546,6 +564,7 @@ async function runGenerationPipeline(
   deps: GenerationDependencies,
   controller: AbortController,
   expectedRunToken: number,
+  currentCode: string | null = null,
 ): Promise<void> {
   const signal = controller.signal;
 
@@ -559,13 +578,20 @@ async function runGenerationPipeline(
       if (operation === "generate") {
         await runGenerate(jobId, deps, controller, expectedRunToken);
       } else {
-        await runManualRepair(jobId, deps, controller, expectedRunToken);
+        await runManualRepair(jobId, deps, controller, expectedRunToken, currentCode);
       }
       return;
     }
 
     if (operation === "render" || operation === "high_quality_render") {
-      await runRenderOnly(jobId, deps, controller, expectedRunToken, operation);
+      await runRenderOnly(
+        jobId,
+        deps,
+        controller,
+        expectedRunToken,
+        operation,
+        currentCode,
+      );
     }
   } catch (err) {
     if (err instanceof JobCancelled) {
@@ -634,7 +660,13 @@ export async function executeGenerationJob(
   const registry = getActiveJobs();
   const controller = new AbortController();
 
-  const promise = runGenerationPipeline(snapshot.id, deps, controller, snapshot.runToken)
+  const promise = runGenerationPipeline(
+    snapshot.id,
+    deps,
+    controller,
+    snapshot.runToken,
+    input.currentCode,
+  )
     .catch((err) => {
       // Belt and braces — the pipeline handles its own failures internally.
       console.error(

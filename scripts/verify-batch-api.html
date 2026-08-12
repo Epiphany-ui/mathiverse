@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>Batch API 验证</title></head>
+<body style="font-family:monospace;padding:20px;max-width:800px;margin:0 auto;">
+<h2>Batch API 验证工具</h2>
+<p>请先<a href="/admin">以管理员身份登录</a>，然后回到此页面。</p>
+
+<button onclick="runTests()" style="padding:10px 20px;font-size:16px;cursor:pointer;">运行验证</button>
+<pre id="output" style="background:#1a1a1a;color:#0f0;padding:15px;border-radius:8px;margin-top:15px;overflow:auto;"></pre>
+
+<script>
+const out = document.getElementById("output");
+function log(msg) { out.textContent += msg + "\n"; }
+
+async function runTests() {
+  out.textContent = "";
+  log("=== Batch API 验证 ===\n");
+
+  // Test 1: All batch actions are reachable
+  log("1. 批量操作端点可达性：");
+  for (const action of ["ban_users","unban_users","delete_content","publish_wiki","unpublish_wiki"]) {
+    const res = await fetch("/api/admin/batch", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action,targets:["test"]})
+    });
+    log(`   ${action}: ${res.status} ${res.status === 401 ? "(需认证)" : res.status === 400 ? "(参数验证)" : res.status === 200 ? "✅" : "❌"}`);
+  }
+
+  // Test 2: Empty targets rejected
+  log("\n2. 空 targets 验证：");
+  const emptyRes = await fetch("/api/admin/batch", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action:"publish_wiki",targets:[]})
+  });
+  const emptyData = await emptyRes.json();
+  log(`   状态: ${emptyRes.status} — ${emptyData.error}`);
+
+  // Test 3: Invalid action rejected
+  log("\n3. 无效操作验证：");
+  const badRes = await fetch("/api/admin/batch", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action:"invalid_action",targets:["test"]})
+  });
+  const badData = await badRes.json();
+  log(`   状态: ${badRes.status} — ${badData.error}`);
+
+  // Test 4: Wiki publish (real operation)
+  log("\n4. Wiki 批量发布测试（真实操作）：");
+  const pubRes = await fetch("/api/admin/batch", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action:"publish_wiki",targets:["golden-ratio"]})
+  });
+  const pubData = await pubRes.json();
+  log(`   状态: ${pubRes.status}`);
+  log(`   摘要: ${JSON.stringify(pubData.summary)}`);
+  if (pubData.results) {
+    for (const r of pubData.results) {
+      log(`   ${r.target}: ${r.ok ? "✅ 成功" : "❌ " + (r.error || "失败")}`);
+    }
+  }
+
+  log("\n=== 验证完成 ===");
+}
+</script>
+</body>
+</html>

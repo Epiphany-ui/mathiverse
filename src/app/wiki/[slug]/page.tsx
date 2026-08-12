@@ -1,12 +1,14 @@
 import { AppHeader } from "@/components/layout/app-header";
 import { LikeButton } from "@/components/shared/like-button";
 import { BookmarkButton } from "@/components/shared/bookmark-button";
+import { ShareButton } from "@/components/shared/share-button";
 import { TagBadge } from "@/components/content/tag-badge";
 import { CommentList } from "@/components/community/comment-list";
 import { ScrollReveal } from "@/components/shared/scroll-reveal";
 import { GlassCard } from "@/components/shared/glass-card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WikiBody } from "@/components/wiki/wiki-body";
 import { KnowledgeGraph } from "@/components/wiki/knowledge-graph";
 import {
@@ -25,6 +27,7 @@ import {
   getWikiEntryBySlug,
   getConnectedEntries,
 } from "@/lib/db/wiki";
+import type { WikiEntry } from "@/types";
 import { getCommentsForTarget } from "@/lib/db/queries";
 import { WIKI_CATEGORIES } from "@/lib/wiki/categories";
 
@@ -47,28 +50,88 @@ export async function generateMetadata({
   params,
 }: WikiEntryPageProps): Promise<Metadata> {
   const { slug } = await params;
+  const admin = getAdminClient();
+  // Try published first, then fall back to admin client for unpublished
   const supabase = await createClient();
-  // Use lightweight query — only need title, summary, coverUrl for metadata
-  const entry = supabase
-    ? await supabase
-        .from("wiki_entries")
-        .select("title, summary, cover_url")
-        .eq("slug", slug)
-        .eq("is_published", true)
-        .single()
-        .then(({ data }) => data)
-    : null;
-  if (!entry) return { title: "词条未找到 — Mathiverse" };
+  let row: any = null;
+  if (supabase) {
+    const { data } = await supabase
+      .from("wiki_entries")
+      .select("title, summary, cover_url")
+      .eq("slug", slug)
+      .eq("is_published", true)
+      .single();
+    row = data;
+  }
+  // Fallback: entry might be unpublished — try admin client
+  if (!row && admin) {
+    const { data } = await (admin as any)
+      .from("wiki_entries")
+      .select("title, summary, cover_url")
+      .eq("slug", slug)
+      .single();
+    row = data;
+  }
+  if (!row) return { title: "词条未找到 — Mathiverse" };
 
   return {
-    title: `${entry.title} — Mathiverse 百科`,
-    description: entry.summary ?? "",
+    title: `${row.title} — Mathiverse 百科`,
+    description: row.summary ?? "",
     openGraph: {
-      title: `${entry.title} — Mathiverse 百科`,
-      description: entry.summary ?? "",
-      images: entry.cover_url ? [entry.cover_url] : [],
+      title: `${row.title} — Mathiverse 百科`,
+      description: row.summary ?? "",
+      images: row.cover_url ? [row.cover_url] : [],
     },
   };
+}
+
+/** Fetch a wiki entry, falling back to admin client for unpublished entries
+ *  when the current user is an admin/owner or the entry's author. */
+async function resolveWikiEntry(
+  supabase: any,
+  slug: string,
+): Promise<WikiEntry | null> {
+  // Try published first (fast path — respects RLS)
+  let entry = await getWikiEntryBySlug(supabase, slug);
+  if (entry) return entry;
+
+  // Not found via RLS — check if user has unpublished access
+  const admin = getAdminClient();
+  if (!admin) return null;
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // Check admin/owner role
+    const { data: profile } = await (admin as any)
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    const role = (profile as any)?.role as string | undefined;
+    if (role === "admin" || role === "owner") {
+      return getWikiEntryBySlug(supabase, slug, {
+        includeUnpublished: true,
+        adminClient: admin,
+      });
+    }
+
+    // Check if user is the entry's author
+    const { data: hidden } = await (admin as any)
+      .from("wiki_entries")
+      .select("author_id")
+      .eq("slug", slug)
+      .single();
+    if (hidden && (hidden as any).author_id === user.id) {
+      return getWikiEntryBySlug(supabase, slug, {
+        includeUnpublished: true,
+        adminClient: admin,
+      });
+    }
+  } catch { /* fall back to null */ }
+
+  return null;
 }
 
 export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
@@ -76,7 +139,7 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
   const supabase = await createClient();
   if (!supabase) notFound();
 
-  const entry = await getWikiEntryBySlug(supabase, slug);
+  const entry = await resolveWikiEntry(supabase, slug);
   if (!entry) notFound();
 
   // Parallelize: comments, knowledge graph, and related entries are all independent
@@ -181,6 +244,11 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
               >
                 {categoryMeta?.label ?? entry.category}
               </span>
+              {!entry.isPublished && (
+                <span className="inline-block text-xs font-medium px-3 py-1 rounded-full bg-[#e8a55a]/15 text-[#e8a55a] ml-2">
+                  未发布
+                </span>
+              )}
               <h1 className="font-[family-name:var(--font-cormorant)] text-4xl font-normal tracking-[-0.5px] text-[#141413] leading-tight">
                 {entry.title}
               </h1>
@@ -193,6 +261,31 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
                 </span>
               </div>
             </div>
+
+            {/* Contributor */}
+            {entry.author && (
+              <div className="relative z-10 flex items-center justify-center gap-2 mt-3">
+                <Link
+                  href={`/u/${entry.author.username}`}
+                  className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity"
+                >
+                  <Avatar className="w-6 h-6 ring-1 ring-white/60">
+                    {entry.author.avatarUrl ? (
+                      <AvatarImage src={entry.author.avatarUrl} alt="" />
+                    ) : null}
+                    <AvatarFallback className="bg-[#cc785c] text-white text-[10px]">
+                      {entry.author.displayName?.slice(0, 1) ?? "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm text-[#6c6a64]">
+                    {entry.author.displayName}
+                  </span>
+                  <span className="text-xs text-[#9c9890]">
+                    @{entry.author.username}
+                  </span>
+                </Link>
+              </div>
+            )}
           </div>
         </ScrollReveal>
 
@@ -206,6 +299,7 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
                 count={entry.likesCount}
               />
               <BookmarkButton targetType="wiki" targetId={entry.id} />
+              <ShareButton />
             </div>
             <div className="flex-1" />
             <span className="text-xs text-[#6c6a64] flex items-center gap-1">
@@ -219,7 +313,7 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
         {entry.tags.length > 0 && (
           <ScrollReveal>
             <div className="flex flex-wrap gap-2">
-              {entry.tags.map((tag) => (
+              {entry.tags.map((tag: string) => (
                 <TagBadge key={tag} tag={tag} />
               ))}
             </div>

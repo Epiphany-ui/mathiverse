@@ -5,6 +5,7 @@ import {
   JetBrains_Mono,
   Noto_Sans_SC,
 } from "next/font/google";
+import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -53,12 +54,14 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <TooltipProvider>
-          <div className="animate-page-enter">
-            {children}
-          </div>
-        </TooltipProvider>
-        <Toaster richColors />
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+          <TooltipProvider>
+            <div className="animate-page-enter">
+              {children}
+            </div>
+          </TooltipProvider>
+          <Toaster richColors />
+        </ThemeProvider>
       </body>
     </html>
   );

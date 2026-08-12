@@ -1,6 +1,7 @@
 // Resolve the owner of a generation API request.
 // Authenticated users have { kind: "user", userId }.
 // Anonymous visitors get a signed session cookie with { kind: "anonymous", sessionHash }.
+// In production, anonymous creation (POST) can be disabled via ALLOW_ANONYMOUS_GENERATION.
 
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -16,17 +17,16 @@ function getSecret(): string | null {
   return process.env.GENERATION_SESSION_SECRET ?? null;
 }
 
-export async function resolveRequestOwner(): Promise<{
+export async function resolveRequestOwner(opts?: {
+  requireAuth?: boolean;
+}): Promise<{
   owner: GenerationOwner | null;
   error?: { status: number; message: string };
 }> {
   // 1. Try authenticated user first
   try {
     const supabase = await createClient();
-    if (!supabase) {
-      // Supabase not configured — fall through to anonymous
-      throw new Error("Supabase not configured");
-    }
+    if (!supabase) throw new Error("Supabase not configured");
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -34,10 +34,18 @@ export async function resolveRequestOwner(): Promise<{
       return { owner: { kind: "user", userId: user.id } };
     }
   } catch {
-    // Auth unavailable — fall through to anonymous
+    // Auth unavailable — fall through
   }
 
-  // 2. Anonymous session via signed cookie
+  // 2. If authentication is required, stop here
+  if (opts?.requireAuth) {
+    return {
+      owner: null,
+      error: { status: 401, message: "请先登录后再使用生成功能" },
+    };
+  }
+
+  // 3. Anonymous session via signed cookie
   const secret = getSecret();
   if (!secret) {
     return {
@@ -56,13 +64,9 @@ export async function resolveRequestOwner(): Promise<{
     const sessionId = verifySignedAnonymousSession(secret, existing);
     if (sessionId) {
       return {
-        owner: {
-          kind: "anonymous",
-          sessionHash: hashAnonymousSession(sessionId),
-        },
+        owner: { kind: "anonymous", sessionHash: hashAnonymousSession(sessionId) },
       };
     }
-    // Tampered — create new
   }
 
   // Create new anonymous session
@@ -73,13 +77,12 @@ export async function resolveRequestOwner(): Promise<{
     sessionHash: hashAnonymousSession(sessionId),
   };
 
-  // Set cookie for future requests
   cookieStore.set(SANDBOX_SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/api/generation",
-    maxAge: 60 * 60 * 24, // 24 hours
+    maxAge: 60 * 60 * 24,
   });
 
   return { owner };

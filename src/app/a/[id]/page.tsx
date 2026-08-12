@@ -2,6 +2,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { MarkdownRenderer } from "@/components/content/markdown-renderer";
 import { LikeButton } from "@/components/shared/like-button";
 import { BookmarkButton } from "@/components/shared/bookmark-button";
+import { ShareButton } from "@/components/shared/share-button";
 import { TagBadge } from "@/components/content/tag-badge";
 import { CommentList } from "@/components/community/comment-list";
 import { ScrollReveal } from "@/components/shared/scroll-reveal";
@@ -141,6 +142,7 @@ export default async function ArticlePage({
             <div className="flex items-center gap-1">
               <LikeButton targetType="article" targetId={id} count={article.likesCount} />
               <BookmarkButton targetType="article" targetId={id} />
+              <ShareButton />
             </div>
           </div>
         </ScrollReveal>

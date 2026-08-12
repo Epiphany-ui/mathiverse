@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
 import { GlassCard } from "@/components/shared/glass-card";
@@ -36,7 +37,22 @@ export default async function UserProfilePage({
 
   const vizs = await getUserVisualizations(supabase, profile.id);
   const articles = await getUserArticles(supabase, profile.id);
-  const bookmarkItems = await getUserBookmarks(supabase, profile.id);
+
+  // Follower / following counts
+  const [{ count: followerCount }, { count: followingCount }] = await Promise.all([
+    supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", profile.id),
+    supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", profile.id),
+  ]);
+
+  // Bookmarks are private (bookmarks_read_own RLS) — only fetch them
+  // when viewing your own profile. Other profiles show an empty collection.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const isOwnProfile = user?.id === profile.id;
+  const bookmarkItems = isOwnProfile
+    ? await getUserBookmarks(supabase, profile.id)
+    : [];
   const forkItems = await getUserForks(supabase, profile.id);
 
   // Build feed items from user content
@@ -116,6 +132,8 @@ export default async function UserProfilePage({
               <div className="flex items-center gap-4 text-sm text-muted-foreground pt-1">
                 <span>{vizs.length} 作品</span>
                 <span>{articles.length} 文章</span>
+                <Link href={`/u/${username}/followers`} className="hover:text-[#cc785c] transition-colors">{followerCount ?? 0} 粉丝</Link>
+                <Link href={`/u/${username}/following`} className="hover:text-[#cc785c] transition-colors">{followingCount ?? 0} 关注</Link>
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5" />
                   加入于{" "}

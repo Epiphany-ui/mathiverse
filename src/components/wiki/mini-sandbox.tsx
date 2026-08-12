@@ -8,7 +8,7 @@ import {
 } from "react";
 import { X, Play, Wand2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ChatPanel } from "@/components/sandbox/chat-panel";
+import { ChatPanel } from "@/components/wiki/chat-panel";
 import { CodeEditor } from "@/components/sandbox/code-editor";
 import { PublishDialog } from "@/components/sandbox/publish-dialog";
 import { useChat } from "@/hooks/use-chat";
@@ -35,7 +35,7 @@ export function MiniSandbox({
 
 class ${toClassName(wikiTitle)}(Scene):
     def construct(self):
-        # TODO: animate "${wikiTitle}"
+        # 为 "${wikiTitle}" 创建动画：展示核心概念与可视化演示
         pass
 `,
   );

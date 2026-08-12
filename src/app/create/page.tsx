@@ -61,25 +61,21 @@ export default function CreateArticlePage() {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    const { data, error: insertError } = await supabase
-      .from("articles")
-      .insert({
-        title: title.trim(),
-        body_md: bodyMd,
-        tags: cleanTags,
-        author_id: user.id,
-        is_published: true,
-      })
-      .select("id")
-      .single();
+    const res = await fetch("/api/articles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.trim(), bodyMd, tags: cleanTags }),
+    });
 
-    if (insertError) {
-      setError(insertError.message);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.error ?? "发布失败");
       setPublishing(false);
       return;
     }
 
-    router.push(`/a/${data.id}`);
+    const { id } = await res.json();
+    router.push(`/a/${id}`);
   };
 
   return (

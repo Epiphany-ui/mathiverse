@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { GenerationEvent, GenerationOperation, GenerationVersion } from "@/lib/generation/types";
-import { createGenerationJob, getGenerationJob, patchGenerationJob } from "./client-api";
+import { createGenerationJob, getGenerationJob, getActiveGenerationJob, GenerationClientError, patchGenerationJob } from "./client-api";
 import {
   createStudioClientState,
   studioClientReducer,
@@ -14,6 +14,7 @@ type UseGenerationJobOptions = {
   initialCode: string;
   hasAuthoritativeCode: boolean;
   initialJobId: string | null;
+  skipAutoRecovery?: boolean;
 };
 
 const GENERATION_EVENT_TYPES: GenerationEvent["type"][] = [
@@ -87,6 +88,49 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
     };
   }, [state.activeJobId, state.isTakingOver, refreshSnapshot]);
 
+  // Auto-recovery: discover active job on mount when no initialJobId was given.
+  // The server-side job survives navigation; this effect re-attaches the client.
+  useEffect(() => {
+    if (options.initialJobId || options.skipAutoRecovery) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const job = await getActiveGenerationJob();
+        if (cancelled || !job) return;
+
+        const wasActive = stateRef.current.activeJobId === job.id;
+
+        if (!wasActive) {
+          // Different job or no active job — full recovery.
+          // The activeJobId change will trigger the SSE effect.
+          dispatch({ type: "job.recovered", jobId: job.id });
+          dispatch({ type: "snapshot.received", jobId: job.id, snapshot: job });
+          replaceJobInUrl(job.id);
+        } else {
+          // Same-route navigation (e.g. "创作" link while a job is running):
+          // React preserved the reducer state so activeJobId is unchanged,
+          // but the SSE connection was torn down by the previous cleanup.
+          // Force a reconnect by briefly clearing activeJobId, then restoring
+          // it so the SSE effect opens a fresh EventSource.
+          sourceRef.current?.close();
+          sourceRef.current = null;
+          dispatch({ type: "snapshot.received", jobId: job.id, snapshot: job });
+          // Toggle activeJobId to re-trigger the SSE effect
+          dispatch({ type: "job.recovered", jobId: "" });
+          setTimeout(() => {
+            if (cancelled) return;
+            dispatch({ type: "job.recovered", jobId: job.id });
+          }, 0);
+        }
+      } catch (error) {
+        // Silent: the job is still running server-side. A subsequent submit
+        // will hit the 409-resume path and recover.
+        console.warn("[generation] active job discovery failed", error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [options.initialJobId, options.skipAutoRecovery, replaceJobInUrl]);
+
   const start = useCallback(async (
     operation: GenerationOperation,
     prompt: string,
@@ -110,6 +154,16 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
       dispatch({ type: "job.started", snapshot: response.snapshot });
       replaceJobInUrl(response.jobId);
     } catch (error) {
+      if (error instanceof GenerationClientError && error.status === 409) {
+        const details = error.details as { activeJobId?: string } | null | undefined;
+        const activeJobId = details?.activeJobId;
+        if (activeJobId && activeJobId !== stateRef.current.activeJobId) {
+          sourceRef.current?.close();
+          dispatch({ type: "job.recovered", jobId: activeJobId });
+          replaceJobInUrl(activeJobId);
+          return;
+        }
+      }
       dispatch({ type: "error", message: error instanceof Error ? error.message : "无法开始任务" });
     }
   }, [replaceJobInUrl]);
@@ -152,10 +206,6 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
       if (result?.version) selectVersion(result.version);
     },
     retry: () => patch({ type: "retry" }),
-    publish: () => {
-      const versionId = stateRef.current.selectedVersionId ?? stateRef.current.snapshot?.currentVersion?.id;
-      return versionId ? patch({ type: "publish", versionId }) : Promise.resolve(null);
-    },
     selectVersion,
     selectMobilePanel: (panel: MobileStudioPanel) => dispatch({ type: "mobile.selected", panel }),
     setEditorCode: (code: string) => dispatch({ type: "editor.changed", code }),

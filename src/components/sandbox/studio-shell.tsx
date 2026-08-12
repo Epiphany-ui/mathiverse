@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Braces, CircleStop, Clapperboard, ListTodo, LoaderCircle, Play, Send, Sparkles, Wrench } from "lucide-react";
 import { isLocalRendererUrl } from "@/lib/utils";
 import { CodeEditor } from "./code-editor";
@@ -15,11 +15,23 @@ type Controller = ReturnType<typeof useGenerationJob>;
 export function StudioShell({ controller, initialPrompt, onOpenPublish }: { controller: Controller; initialPrompt: string; onOpenPublish: () => void }) {
   const { state } = controller;
   const [prompt, setPrompt] = useState(initialPrompt);
+  const lastSnapshotPrompt = useRef(state.snapshot?.prompt);
   const [failedVideo, setFailedVideo] = useState<string | null>(null);
+  // When auto-recovery restores a job, sync its prompt into the textarea so
+  // the user sees their original prompt after navigating back.
+  if (state.snapshot?.prompt && !initialPrompt && state.snapshot.prompt !== lastSnapshotPrompt.current) {
+    lastSnapshotPrompt.current = state.snapshot.prompt;
+    queueMicrotask(() => setPrompt(state.snapshot!.prompt));
+  }
+  if (initialPrompt) {
+    lastSnapshotPrompt.current = state.snapshot?.prompt;
+  }
   const working = !state.isTakingOver && (state.snapshot?.status === "queued" || state.snapshot?.status === "running");
   const rawVideo = state.snapshot?.render?.url;
   const mediaError = Boolean(rawVideo && failedVideo === rawVideo);
-  const canvasState = mediaError ? "error" : getCanvasState(state.snapshot);
+  // Takeover freezes the generation pipeline — show idle canvas so the
+  // spinner doesn't spin forever while the user edits.
+  const canvasState = state.isTakingOver ? "idle" : (mediaError ? "error" : getCanvasState(state.snapshot));
   const video = rawVideo && isLocalRendererUrl(rawVideo) ? `/api/video-proxy?url=${encodeURIComponent(rawVideo)}` : rawVideo;
   const phaseIndex = ["planning", "retrieving", "generating", "validating", "rendering"].indexOf(state.snapshot?.phase ?? "");
 

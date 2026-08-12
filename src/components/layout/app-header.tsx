@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { NotificationDropdown } from "@/components/layout/notification-dropdown";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { isGalleryHeaderScrolled } from "@/components/home/home-data";
 
@@ -217,6 +218,9 @@ export function AppHeader({ appearance = "default" }: AppHeaderProps) {
             </Button>
           )}
         </div>
+
+        {/* Theme toggle */}
+        <ThemeToggle className={darkHeader ? "text-[#f2f3ed]" : undefined} />
 
         {/* Auth / User */}
         <div className="flex items-center gap-2">

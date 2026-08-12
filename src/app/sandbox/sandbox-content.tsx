@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import "@/components/sandbox/entrance-animation.css";
 import { AppHeader } from "@/components/layout/app-header";
 import { PublishDialog } from "@/components/sandbox/publish-dialog";
 import { StudioShell } from "@/components/sandbox/studio-shell";
@@ -29,8 +30,11 @@ interface SandboxContentProps {
 }
 
 export function SandboxContent({ forkId, initialPrompt, jobId }: SandboxContentProps) {
-  const [entrance, setEntrance] = useState<StudioEntrance>(() =>
-    resolveStudioEntrance({ hasPresentationMarker: true, jobId }),
+  // Defer entrance resolution until sessionStorage is available.
+  // "resume" is safe to set synchronously (keyed on the URL param);
+  // "first" requires knowing whether the marker was already set.
+  const [entrance, setEntrance] = useState<StudioEntrance | undefined>(() =>
+    jobId?.trim() ? "resume" : undefined,
   );
   const [promptSeed, setPromptSeed] = useState(initialPrompt);
   const [forkedFrom, setForkedFrom] = useState<string | null>(null);
@@ -40,6 +44,7 @@ export function SandboxContent({ forkId, initialPrompt, jobId }: SandboxContentP
     initialCode: PLACEHOLDER_CODE,
     hasAuthoritativeCode: false,
     initialJobId: jobId,
+    skipAutoRecovery: forkId !== null,
   });
 
   useEffect(() => {
@@ -66,6 +71,7 @@ export function SandboxContent({ forkId, initialPrompt, jobId }: SandboxContentP
         .from("visualizations")
         .select("source_code")
         .eq("id", forkId)
+        .eq("is_published", true)
         .single();
       const row = data as { source_code?: string | null } | null;
       if (!cancelled && row?.source_code) {
@@ -92,9 +98,19 @@ export function SandboxContent({ forkId, initialPrompt, jobId }: SandboxContentP
     } catch {}
   }, [forkId, initialPrompt, controller.setEditorCode]);
 
+  // When entrance is "first" and a recovered job loads mid-animation,
+  // let the animation finish before switching.  The CSS animation runs
+  // for 900ms; delaying the bump avoids a visual clash.
+  const activeJobId = controller.state.activeJobId;
+  useEffect(() => {
+    if (!activeJobId || entrance !== "first") return;
+    const id = setTimeout(() => setEntrance("resume"), 950);
+    return () => clearTimeout(id);
+  }, [activeJobId, entrance]);
+
   const videoUrl = controller.state.snapshot?.render?.url ?? null;
   return (
-    <div className="studio-entrance-shell min-h-screen bg-[#071012]" data-studio-entrance={entrance}>
+    <div className="studio-entrance-shell min-h-screen bg-[#071012]" {...(entrance ? { "data-studio-entrance": entrance } : {})}>
       <AppHeader appearance="studio" />
       <div className="pt-16 min-w-0 overflow-x-clip">
         <StudioShell key={promptSeed} controller={controller} initialPrompt={promptSeed} onOpenPublish={() => setPublishOpen(true)} />

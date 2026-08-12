@@ -35,6 +35,12 @@ export interface GenerationJobStore {
     owner: GenerationOwner,
   ): Promise<GenerationJobSnapshot | null>;
 
+  /** Return the owner's most recent job regardless of status.
+   *  Used for auto-recovery when no active (queued/running) job exists. */
+  getMostRecentJob(
+    owner: GenerationOwner,
+  ): Promise<GenerationJobSnapshot | null>;
+
   /** Server-internal: load a job by ID without owner check. */
   getJobById(jobId: string): Promise<GenerationJobSnapshot | null>;
 

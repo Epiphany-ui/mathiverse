@@ -93,18 +93,12 @@ export async function GET(
       try {
         scheduleHeartbeat();
 
+        // No per-iteration abort listener (poll() and the loop condition both
+        // re-check the signal, so the stream exits within one poll interval).
         while (!abortController.signal.aborted) {
           await poll();
           await new Promise<void>((resolve) => {
-            const id = setTimeout(resolve, POLL_INTERVAL_MS);
-            abortController.signal.addEventListener(
-              "abort",
-              () => {
-                clearTimeout(id);
-                resolve();
-              },
-              { once: true },
-            );
+            setTimeout(resolve, POLL_INTERVAL_MS);
           });
         }
       } catch {

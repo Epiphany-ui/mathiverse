@@ -155,7 +155,16 @@ export function CodeEditor({
       let pos = 0;
 
       for (let i = 0; i < targetCode.length; i += CHUNK_SIZE) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          // Aborted mid-paint: sync the current document (including any
+          // keystrokes typed during the animation) to the parent so nothing
+          // is lost, and re-enable change propagation.
+          typewritingRef.current = false;
+          const abortedDoc = view.state.doc.toString();
+          editorValueRef.current = abortedDoc;
+          onChange?.(abortedDoc);
+          return;
+        }
 
         // Guard against the doc being replaced externally (defense-in-depth)
         if (pos > view.state.doc.length) return;

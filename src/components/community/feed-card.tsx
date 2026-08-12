@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GlassCard } from "@/components/shared/glass-card";
 import { TiltCard } from "@/components/shared/tilt-card";
 import { GenerativeThumbnail } from "@/components/content/generative-thumbnail";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -63,6 +64,27 @@ function timeAgo(dateStr: string): string {
 }
 
 export function FeedCard({ item, className }: FeedCardProps) {
+  if (item.type === "wiki") {
+    const href = `/wiki/${item.slug ?? item.id}`;
+    return (
+      <Link href={href}>
+        <GlassCard className={cn("p-5 cursor-pointer h-full flex flex-col gap-3 border-[#e6dfd8]", className)} hover>
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#cc785c]/10 text-[#cc785c] w-fit">百科</span>
+          <h3 className="font-[family-name:var(--font-cormorant)] text-lg font-semibold text-[#141413] leading-tight line-clamp-2">
+            {item.title}
+          </h3>
+          {item.description && (
+            <p className="text-sm text-[#6c6a64] line-clamp-2">{item.description}</p>
+          )}
+          <div className="flex items-center gap-3 mt-auto text-xs text-[#6c6a64]/60">
+            <span>{item.likesCount} 赞</span>
+            <span>{item.commentsCount} 评论</span>
+          </div>
+        </GlassCard>
+      </Link>
+    );
+  }
+
   const href = item.type === "visualization" ? `/v/${item.id}` : `/a/${item.id}`;
   const isViz = item.type === "visualization";
 

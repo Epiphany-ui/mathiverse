@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+# cd to script directory so relative paths resolve correctly
+cd "$(dirname "$0")"
+
 echo ""
 echo "============================================"
 echo "  Mathiverse Local Renderer"

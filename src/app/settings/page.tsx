@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { AppHeader } from "@/components/layout/app-header";
 import { ParticlesBackground } from "@/components/shared/particles-background";
 import { GlassCard } from "@/components/shared/glass-card";
@@ -28,6 +29,10 @@ export default function SettingsPage() {
   // Avatar upload
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Account deletion
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Password change
   const [currentPassword, setCurrentPassword] = useState("");
@@ -311,7 +316,7 @@ export default function SettingsPage() {
             <h2 className="font-semibold">通知偏好</h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            通知设置将在后续版本中提供
+            实时通知已自动开启。你可以在顶部导航栏的铃铛图标中查看所有通知。
           </p>
         </GlassCard>
 
@@ -324,8 +329,11 @@ export default function SettingsPage() {
 
           {isOAuthUser ? (
             <p className="text-sm text-muted-foreground">
-              你通过第三方账号登录，无需密码。如需设置密码，请使用
-              &quot;忘记密码&quot;功能。
+              你通过第三方账号登录，无需密码。如需设置密码，请使用{" "}
+              <Link href="/auth/reset-password" className="text-primary hover:underline">
+                忘记密码
+              </Link>{" "}
+              功能。
             </p>
           ) : (
             <form
@@ -442,6 +450,58 @@ export default function SettingsPage() {
                 {passwordBusy ? "修改中..." : "修改密码"}
               </Button>
             </form>
+          )}
+        </GlassCard>
+
+        {/* Danger zone */}
+        <GlassCard className="p-6 space-y-4 border-destructive/20" hover={false}>
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <h2 className="font-semibold text-destructive">危险区域</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            删除账号后，你的所有数据将被永久删除且无法恢复。
+          </p>
+          {!deleteConfirm ? (
+            <Button
+              variant="outline"
+              className="border-destructive/30 text-destructive hover:bg-destructive/5"
+              onClick={() => setDeleteConfirm(true)}
+            >
+              删除我的账号
+            </Button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Button
+                className="bg-destructive hover:bg-destructive/90 text-white"
+                disabled={deleting}
+                onClick={() => {
+                  setDeleting(true);
+                  fetch("/api/account", { method: "DELETE" })
+                    .then((res) => {
+                      if (res.ok) window.location.href = "/";
+                      else return res.json().then((d: any) => { throw new Error(d.error ?? "删除失败"); });
+                    })
+                    .catch((err) => {
+                      setError(err instanceof Error ? err.message : "网络错误，请重试");
+                      setDeleteConfirm(false);
+                    })
+                    .finally(() => setDeleting(false));
+                }}
+              >
+                {deleting ? "删除中..." : "确认删除"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={deleting}
+                onClick={() => setDeleteConfirm(false)}
+              >
+                取消
+              </Button>
+            </div>
           )}
         </GlassCard>
       </main>

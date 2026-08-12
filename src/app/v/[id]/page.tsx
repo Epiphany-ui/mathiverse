@@ -4,6 +4,7 @@ import { VideoPlayer } from "@/components/content/video-player";
 import { LikeButton } from "@/components/shared/like-button";
 import { ForkButton } from "@/components/shared/fork-button";
 import { BookmarkButton } from "@/components/shared/bookmark-button";
+import { ShareButton } from "@/components/shared/share-button";
 import { TagBadge } from "@/components/content/tag-badge";
 import { CommentList } from "@/components/community/comment-list";
 import { ScrollReveal } from "@/components/shared/scroll-reveal";
@@ -164,6 +165,7 @@ export default async function VisualizationPage({
                 <LikeButton targetType="visualization" targetId={id} count={viz.likesCount} />
                 <ForkButton vizId={id} count={viz.forksCount} />
                 <BookmarkButton targetType="visualization" targetId={id} />
+                <ShareButton />
               </div>
             </div>
           </ScrollReveal>

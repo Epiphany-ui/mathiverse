@@ -126,7 +126,6 @@ export function validatePatchAction(
     "take_over",
     "save_manual_version",
     "rollback",
-    "publish",
   ];
 
   if (!validActions.includes(type)) {
@@ -154,22 +153,15 @@ export function validatePatchAction(
     (action as { type: "save_manual_version"; code: string }).code = b.code;
   }
 
-  if (type === "rollback" || type === "publish") {
+  if (type === "rollback") {
     if (typeof b.versionId !== "string") {
       return {
         errors: [
-          { field: "versionId", message: `${type} 操作需要提供 versionId` },
+          { field: "versionId", message: "rollback 操作需要提供 versionId" },
         ],
       };
     }
-    if (type === "rollback") {
-      (action as { type: "rollback"; versionId: string }).versionId =
-        b.versionId;
-    }
-    if (type === "publish") {
-      (action as { type: "publish"; versionId: string }).versionId =
-        b.versionId;
-    }
+    (action as { type: "rollback"; versionId: string }).versionId = b.versionId;
   }
 
   return { action };

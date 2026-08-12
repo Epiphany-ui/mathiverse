@@ -19,6 +19,15 @@ function LoginFormInner() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Display error params passed from middleware or OAuth callback
+  const serverError = searchParams.get("error");
+  const serverErrorText =
+    serverError === "banned"
+      ? "你的账号已被封禁。如有疑问请联系管理员。"
+      : serverError === "auth_callback_error"
+        ? "第三方登录失败，请重试或使用邮箱密码登录。"
+        : null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -61,6 +70,11 @@ function LoginFormInner() {
       {error && (
         <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
           {error}
+        </div>
+      )}
+      {serverErrorText && !error && (
+        <div className="p-3 rounded-lg bg-[#e8a55a]/10 border border-[#e8a55a]/20 text-sm text-[#c7852a]">
+          {serverErrorText}
         </div>
       )}
 
@@ -124,6 +138,11 @@ function LoginFormInner() {
         使用 GitHub 登录
       </Button>
 
+      <p className="text-center text-sm text-muted-foreground">
+        <Link href="/auth/reset-password" className="text-primary hover:underline">
+          忘记密码？
+        </Link>
+      </p>
       <p className="text-center text-sm text-muted-foreground">
         还没有账户？{" "}
         <Link href="/auth/register" className="text-primary hover:underline">

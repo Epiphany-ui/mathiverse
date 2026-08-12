@@ -103,22 +103,25 @@ export function getNotificationMessage(
 ): { message: string; href: string } {
   const name = notification.actor?.displayName ?? "有人";
 
+  const targetPath =
+    notification.targetType === "article" ? "/a/"
+    : notification.targetType === "wiki" ? "/wiki/"
+    : "/v/";
+
   switch (notification.type) {
     case "like":
       return {
         message: `${name} 赞了你的${notification.targetType === "comment" ? "评论" : "作品"}`,
         href: notification.targetId && notification.targetType !== "comment"
-          ? `/${notification.targetType === "article" ? "a" : "v"}/${notification.targetId}`
+          ? `${targetPath}${notification.targetId}`
           : notification.targetId
             ? `/v/${notification.targetId}` // fallback for comment likes
             : "#",
       };
     case "comment":
       return {
-        message: `${name} 评论了你的${notification.targetType === "article" ? "文章" : "作品"}`,
-        href: notification.targetId
-          ? `/${notification.targetType === "article" ? "a" : "v"}/${notification.targetId}`
-          : "#",
+        message: `${name} 评论了你的${notification.targetType === "article" ? "文章" : notification.targetType === "wiki" ? "词条" : "作品"}`,
+        href: notification.targetId ? `${targetPath}${notification.targetId}` : "#",
       };
     case "follow":
       return {

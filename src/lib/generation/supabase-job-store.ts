@@ -137,6 +137,24 @@ export class SupabaseGenerationJobStore implements GenerationJobStore {
     return this.snapshot(data as DbRow);
   }
 
+  async getMostRecentJob(
+    owner: GenerationOwner,
+  ): Promise<GenerationJobSnapshot | null> {
+    let query = this.client
+      .from("generation_jobs")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    query =
+      owner.kind === "user"
+        ? query.eq("owner_user_id", owner.userId).is("owner_session_hash", null)
+        : query.eq("owner_session_hash", owner.sessionHash).is("owner_user_id", null);
+    const { data, error } = await query.maybeSingle();
+    if (error) this.fail("get most recent job", error);
+    if (!data || !this.owns(data as DbRow, owner)) return null;
+    return this.snapshot(data as DbRow);
+  }
+
   async getJobById(jobId: string): Promise<GenerationJobSnapshot | null> {
     const { data, error } = await this.client
       .from("generation_jobs")

@@ -86,6 +86,12 @@ export async function PATCH(
         status: "cancelled",
       });
       await cancelActiveGeneration(jobId);
+      // Emit cancelled event directly — the pipeline's emitCancelled will
+      // bail on runToken mismatch, so the route must guarantee the event.
+      await store.appendEvent(jobId, {
+        type: "job.cancelled",
+        data: { versionId: job.currentVersion?.id ?? null },
+      });
       return NextResponse.json({ success: true, action: "cancel" });
     }
 
@@ -122,6 +128,10 @@ export async function PATCH(
         status: "cancelled",
       });
       await cancelActiveGeneration(jobId);
+      await store.appendEvent(jobId, {
+        type: "job.cancelled",
+        data: { versionId: job.currentVersion?.id ?? null },
+      });
       return NextResponse.json({ success: true, action: "take_over" });
     }
 
@@ -147,15 +157,6 @@ export async function PATCH(
       }
       await store.updateJob(jobId, { currentVersion: target });
       return NextResponse.json({ success: true, version: target });
-    }
-
-    case "publish": {
-      // Publishing via generation studio — placehold for now
-      return NextResponse.json({
-        success: true,
-        action: "publish",
-        message: "发布功能将在完整集成后可用",
-      });
     }
 
     default:

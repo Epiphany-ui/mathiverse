@@ -29,6 +29,7 @@ export type StudioClientAction =
   | { type: "takeover.started" }
   | { type: "version.selected"; version: GenerationVersion }
   | { type: "mobile.selected"; panel: MobileStudioPanel }
+  | { type: "job.recovered"; jobId: string }
   | { type: "error"; message: string | null };
 
 export function createStudioClientState({
@@ -90,10 +91,22 @@ export function studioClientReducer(
       };
     case "snapshot.received":
       if (action.jobId !== state.activeJobId) return state;
+      // Monotonicity guard: never regress to an older snapshot (e.g. a
+      // refreshSnapshot GET racing with SSE events, or reconnect storms).
+      if (state.snapshot && action.snapshot.updatedAt < state.snapshot.updatedAt) {
+        return state;
+      }
+      // Don't overwrite genuine user edits (unsaved code changes) when a
+      // stale snapshot races in.  Recovery paths (snapshot is null) always
+      // apply the code since there's nothing to protect.
+      const hasUnsavedEdits =
+        state.snapshot !== null &&
+        state.selectedVersionId === null &&
+        state.hasAuthoritativeCode === true;
       return {
         ...state,
         snapshot: action.snapshot,
-        ...applySnapshotCode(state, action.snapshot),
+        ...(hasUnsavedEdits ? {} : applySnapshotCode(state, action.snapshot)),
       };
     case "event.received": {
       if (
@@ -104,11 +117,22 @@ export function studioClientReducer(
       ) {
         return state;
       }
-      const snapshot = state.snapshot
-        ? applyGenerationEvent(state.snapshot, action.event)
-        : action.event.type === "job.accepted"
-          ? action.event.data.snapshot
-          : null;
+      let snapshot;
+      try {
+        snapshot = state.snapshot
+          ? applyGenerationEvent(state.snapshot, action.event)
+          : action.event.type === "job.accepted"
+            ? action.event.data.snapshot
+            : null;
+      } catch (err) {
+        // Idempotent replay: the snapshot from snapshot.received already
+        // reflects this event's effect (e.g., phase.changed to the current
+        // phase).  Skip the event rather than crashing the render.
+        if (err instanceof Error && err.message.startsWith("Illegal generation phase transition")) {
+          return state;
+        }
+        throw err;
+      }
       const next = {
         ...state,
         snapshot,
@@ -152,6 +176,22 @@ export function studioClientReducer(
       };
     case "mobile.selected":
       return { ...state, activeMobilePanel: action.panel };
+    case "job.recovered":
+      // Allow replacement when the recovered job differs from the current one
+      // (the stale job is terminal).  No-op only when it's the same job id.
+      if (state.activeJobId === action.jobId) return state;
+      return {
+        ...state,
+        activeJobId: action.jobId,
+        snapshot: null,
+        events: [],
+        connection: "connecting",
+        isTakingOver: false,
+        error: null,
+        // Keep editorCode but reset authoritative flag so the incoming
+        // snapshot's code wins, mirroring a fresh mount.
+        hasAuthoritativeCode: false,
+      };
     case "error":
       return { ...state, error: action.message };
   }

@@ -6,6 +6,8 @@ export interface Profile {
   avatarUrl: string | null;
   bio: string;
   website: string;
+  role: "owner" | "admin" | "user";
+  bannedUntil: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,8 +78,9 @@ export interface Comment {
 export type FeedSort = "hot" | "new" | "followed";
 
 export interface FeedItem {
-  type: "visualization" | "article";
+  type: "visualization" | "article" | "wiki";
   id: string;
+  slug?: string;  // for wiki entries (/wiki/[slug])
   title: string;
   description?: string;
   coverUrl?: string | null;
@@ -106,6 +109,7 @@ export interface WikiEntry {
   tags: string[];
   wikipediaTitle: string | null;
   wikipediaUrl: string | null;
+  authorId: string | null;
   likesCount: number;
   commentsCount: number;
   viewsCount: number;
@@ -113,6 +117,7 @@ export interface WikiEntry {
   createdAt: string;
   updatedAt: string;
   // Joined
+  author?: Pick<Profile, "id" | "username" | "displayName" | "avatarUrl">;
   isLiked?: boolean;
   isBookmarked?: boolean;
 }

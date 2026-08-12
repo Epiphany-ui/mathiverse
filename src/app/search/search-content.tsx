@@ -54,7 +54,7 @@ export function SearchContent() {
           <form onSubmit={handleSearch} className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
-              placeholder="搜索可视化、文章、用户..."
+              placeholder="搜索可视化、文章、百科...（用户名结果在个人主页中查看）"
               className="pl-10 pr-10 h-12 text-base bg-white/5 border-white/10 focus:border-primary/50"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
@@ -111,7 +111,7 @@ export function SearchContent() {
           <div className="text-center py-20">
             <Search className="w-12 h-12 mx-auto text-muted-foreground/30" />
             <p className="text-muted-foreground mt-4 text-lg">
-              输入关键词搜索可视化作品、文章和用户
+              输入关键词搜索可视化作品、文章和百科词条
             </p>
             <div className="flex flex-wrap gap-2 justify-center mt-4">
               {["傅里叶变换", "梯度下降", "欧拉公式", "排序算法", "概率分布"].map(

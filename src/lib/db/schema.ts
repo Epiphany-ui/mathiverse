@@ -11,6 +11,7 @@ import {
   doublePrecision,
   smallint,
   unique,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 /* ─── Profiles (extends Supabase auth.users) ─── */
@@ -21,6 +22,8 @@ export const profiles = pgTable("profiles", {
   avatarUrl: text("avatar_url"),
   bio: text("bio").default(""),
   website: text("website").default(""),
+  role: text("role").notNull().default("user"),
+  bannedUntil: timestamp("banned_until"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -170,6 +173,7 @@ export const wikiEntries = pgTable("wiki_entries", {
   commentsCount: integer("comments_count").default(0),
   viewsCount: integer("views_count").default(0),
   isPublished: boolean("is_published").default(true),
+  authorId: uuid("author_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 },
@@ -181,6 +185,18 @@ export const wikiEntries = pgTable("wiki_entries", {
 ]);
 
 /* ─── Wiki Edges (knowledge graph) ─── */
+export const adminAuditLog = pgTable("admin_audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  adminId: uuid("admin_id")
+    .notNull()
+    .references(() => profiles.id),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id"),
+  details: jsonb("details").default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const wikiEdges = pgTable("wiki_edges", {
   id: uuid("id").primaryKey().defaultRandom(),
   sourceId: uuid("source_id")

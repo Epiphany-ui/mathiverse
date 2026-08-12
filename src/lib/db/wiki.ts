@@ -1,4 +1,28 @@
 import type { WikiEntry, WikiCategory } from "@/types";
+import { normAuthor } from "./queries";
+import { withTimeout } from "@/lib/supabase/with-timeout";
+
+export async function createWikiEntry(
+  client: any,
+  input: { slug: string; title: string; category: string; summary: string; bodyMd: string; authorId: string },
+): Promise<WikiEntry> {
+  const { data, error } = await client
+    .from("wiki_entries")
+    .insert({
+      slug: input.slug,
+      title: input.title,
+      category: input.category,
+      summary: input.summary,
+      body_md: input.bodyMd,
+      author_id: input.authorId,
+      is_published: false,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return normWikiEntry(data);
+}
 
 function normWikiEntry(row: Record<string, any>): WikiEntry {
   return {
@@ -12,43 +36,82 @@ function normWikiEntry(row: Record<string, any>): WikiEntry {
     tags: row.tags ?? [],
     wikipediaTitle: row.wikipediaTitle ?? row.wikipedia_title ?? null,
     wikipediaUrl: row.wikipediaUrl ?? row.wikipedia_url ?? null,
+    authorId: row.authorId ?? row.author_id ?? null,
     likesCount: row.likesCount ?? row.likes_count ?? 0,
     commentsCount: row.commentsCount ?? row.comments_count ?? 0,
     viewsCount: row.viewsCount ?? row.views_count ?? 0,
     isPublished: row.isPublished ?? row.is_published ?? true,
     createdAt: row.createdAt ?? row.created_at ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
+    author: row.profiles ? normAuthor(row.profiles) : undefined,
   };
 }
 
 export async function getWikiEntryBySlug(
   client: any,
   slug: string,
+  opts?: { includeUnpublished?: boolean; adminClient?: any },
 ): Promise<WikiEntry | null> {
-  const { data, error } = await client
-    .from("wiki_entries")
-    .select("*")
-    .eq("slug", slug)
-    .eq("is_published", true)
-    .single();
+  // When including unpublished, use admin client to bypass RLS
+  // (RLS policy "wiki_read_published" blocks reads on is_published=false)
+  const queryClient = opts?.includeUnpublished && opts?.adminClient ? opts.adminClient : client;
+  let query = queryClient.from("wiki_entries").select("*").eq("slug", slug);
+  if (!opts?.includeUnpublished) query = query.eq("is_published", true);
+  const { data, error } = await withTimeout(query).single();
 
   if (error || !data) return null;
-  return normWikiEntry(data);
+  const entry = normWikiEntry(data);
+
+  // Fetch author separately — profiles!author_id embed is an inner join
+  // that drops entries with NULL author_id (all seed/ingest entries).
+  if (entry.authorId) {
+    const { data: profile } = await client
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .eq("id", entry.authorId)
+      .maybeSingle();
+    if (profile) entry.author = normAuthor(profile);
+  }
+  return entry;
 }
 
 export async function getWikiEntryById(
   client: any,
   id: string,
+  opts?: { includeUnpublished?: boolean; adminClient?: any },
 ): Promise<WikiEntry | null> {
-  const { data, error } = await client
-    .from("wiki_entries")
-    .select("*")
-    .eq("id", id)
-    .eq("is_published", true)
-    .single();
+  // When including unpublished, use admin client to bypass RLS
+  const queryClient = opts?.includeUnpublished && opts?.adminClient ? opts.adminClient : client;
+  let query = queryClient.from("wiki_entries").select("*").eq("id", id);
+  if (!opts?.includeUnpublished) query = query.eq("is_published", true);
+  const { data, error } = await withTimeout(query).single();
 
   if (error || !data) return null;
-  return normWikiEntry(data);
+  const entry = normWikiEntry(data);
+  if (entry.authorId) {
+    const { data: profile } = await client
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .eq("id", entry.authorId)
+      .maybeSingle();
+    if (profile) entry.author = normAuthor(profile);
+  }
+  return entry;
+}
+
+/** Batch-fetch authors for a list of entries that have authorId set. */
+async function hydrateAuthors(client: any, entries: WikiEntry[]): Promise<void> {
+  const authorIds = [...new Set(entries.map((e) => e.authorId).filter(Boolean))] as string[];
+  if (authorIds.length === 0) return;
+  const { data: profiles } = await client
+    .from("profiles")
+    .select("id, username, display_name, avatar_url")
+    .in("id", authorIds);
+  if (!profiles) return;
+  const byId = new Map((profiles as any[]).map((p: any) => [p.id, p]));
+  for (const entry of entries) {
+    if (entry.authorId) entry.author = normAuthor(byId.get(entry.authorId));
+  }
 }
 
 export async function getAllWikiEntries(
@@ -61,21 +124,27 @@ export async function getAllWikiEntries(
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
-  return data.map((row: any) => normWikiEntry(row));
+  const entries = data.map((row: any) => normWikiEntry(row));
+  await hydrateAuthors(client, entries);
+  return entries;
 }
 
 /** Lightweight listing — excludes the heavy body_md column. */
 export async function getAllWikiEntriesForListing(
   client: any,
 ): Promise<WikiEntry[]> {
-  const { data, error } = await client
-    .from("wiki_entries")
-    .select("id, slug, title, category, summary, cover_url, tags, likes_count, comments_count, views_count, is_published, created_at, updated_at")
-    .eq("is_published", true)
-    .order("created_at", { ascending: false });
+  const { data, error } = await withTimeout(
+    client
+      .from("wiki_entries")
+      .select("id, slug, title, category, summary, cover_url, tags, author_id, likes_count, comments_count, views_count, is_published, created_at, updated_at")
+      .eq("is_published", true)
+      .order("created_at", { ascending: false }),
+  );
 
   if (error || !data) return [];
-  return data.map((row: any) => normWikiEntry(row));
+  const entries = data.map((row: any) => normWikiEntry(row));
+  await hydrateAuthors(client, entries);
+  return entries;
 }
 
 export async function getWikiEntriesByCategory(
@@ -90,7 +159,9 @@ export async function getWikiEntriesByCategory(
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
-  return data.map((row: any) => normWikiEntry(row));
+  const entries = data.map((row: any) => normWikiEntry(row));
+  await hydrateAuthors(client, entries);
+  return entries;
 }
 
 export async function searchWikiEntries(
@@ -100,14 +171,26 @@ export async function searchWikiEntries(
   const q = query.trim();
   if (!q) return [];
 
+  // Strip .or() grammar chars (`,`, `(`, `)`) so the filter parses; escape
+  // LIKE wildcards (`%`, `_`) so they match literally (math notation like
+  // R_0, a_n); double single quotes for PostgREST.
+  const qSafe = q
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "''")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_")
+    .replace(/[,()]/g, "");
+
   const { data, error } = await client
     .from("wiki_entries")
     .select("*")
     .eq("is_published", true)
-    .or(`title.ilike.%${q}%,summary.ilike.%${q}%`);
+    .or(`title.ilike.%${qSafe}%,summary.ilike.%${qSafe}%`);
 
   if (error || !data) return [];
-  return data.map((row: any) => normWikiEntry(row));
+  const entries = data.map((row: any) => normWikiEntry(row));
+  await hydrateAuthors(client, entries);
+  return entries;
 }
 
 export async function getWikiEntriesByIds(

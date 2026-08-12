@@ -10,6 +10,7 @@ import styles from "@/components/home/home-gallery.module.css";
 import { MathFieldMap } from "@/components/home/math-field-map";
 import { WikiSpotlight } from "@/components/home/wiki-spotlight";
 import { AppHeader } from "@/components/layout/app-header";
+import { RegisteredToast } from "@/components/home/registered-toast";
 import { buildFeedItems } from "@/lib/db/queries";
 import { getAllWikiEntriesForListing } from "@/lib/db/wiki";
 import { createClient } from "@/lib/supabase/server";
@@ -41,6 +42,7 @@ export default async function Home() {
 
   return (
     <div className={styles.page}>
+      <RegisteredToast />
       <div className={styles.darkStage}>
         <AppHeader appearance="gallery" />
         <GallerySection features={carouselFeatures} />

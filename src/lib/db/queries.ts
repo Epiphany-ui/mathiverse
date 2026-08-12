@@ -24,7 +24,7 @@ interface SupabaseQueryClient {
 /* ─── Profile ─── */
 
 /** Map Supabase snake_case row → camelCase Profile */
-function normProfile(row: Record<string, any>): Profile {
+export function normProfile(row: Record<string, any>): Profile {
   return {
     id: row.id,
     username: row.username,
@@ -32,6 +32,8 @@ function normProfile(row: Record<string, any>): Profile {
     avatarUrl: row.avatarUrl ?? row.avatar_url ?? null,
     bio: row.bio ?? row.biography ?? "",
     website: row.website ?? "",
+    role: row.role ?? "user",
+    bannedUntil: row.bannedUntil ?? row.banned_until ?? null,
     createdAt: row.createdAt ?? row.created_at ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
   };
@@ -67,7 +69,7 @@ export async function getProfileByUsername(
 
 /* ─── Normalizers — map Supabase snake_case rows → camelCase types ─── */
 
-function normAuthor(row: Record<string, any>): Pick<Profile, "id" | "username" | "displayName" | "avatarUrl"> | undefined {
+export function normAuthor(row: Record<string, any>): Pick<Profile, "id" | "username" | "displayName" | "avatarUrl"> | undefined {
   if (!row) return undefined;
   return {
     id: row.id,
@@ -186,6 +188,8 @@ export async function getCommentsForTarget(
 
   const rows: Comment[] = data.map((row: any) => normComment(row));
 
+  const fetchedIds = new Set(rows.map((c) => c.id));
+
   // Build reply tree: recursively attach children at every depth
   const byParent = new Map<string | null, Comment[]>();
   for (const c of rows) {
@@ -195,13 +199,26 @@ export async function getCommentsForTarget(
     else byParent.set(key, [c]);
   }
 
+  // Replies to deleted comments keep a parentId that isn't in this fetch.
+  // Promote them to the root level so they don't silently vanish from the tree.
+  const rootComments = byParent.get(null) ?? [];
+  for (const c of rows) {
+    if (c.parentId && !fetchedIds.has(c.parentId)) rootComments.push(c);
+  }
+  byParent.set(null, rootComments);
+
+  // Cycle guard: a comment whose parentId points at itself (or an ancestor)
+  // would recurse forever — skip ids already being processed.
+  const visited = new Set<string>();
   function attachReplies(parent: Comment): Comment {
+    if (visited.has(parent.id)) return parent;
+    visited.add(parent.id);
     const children = byParent.get(parent.id);
     if (!children || children.length === 0) return parent;
     return { ...parent, replies: children.map(attachReplies) };
   }
 
-  return (byParent.get(null) ?? []).map(attachReplies);
+  return rootComments.map(attachReplies);
 }
 
 /* ─── User content ─── */
@@ -343,19 +360,30 @@ export async function searchContent(
   const q = query.trim();
   if (!q) return [];
 
+  // Sanitize for PostgREST filter: strip .or() grammar chars (`,`, `(`, `)`)
+  // so the filter parses, escape LIKE wildcards (`%`, `_`) so they match
+  // literally (math notation like R_0, a_n), and double single quotes.
+  // The JS-side includes() below does the real matching with the raw q.
+  const qSafe = q
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "''")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_")
+    .replace(/[,()]/g, "");
+
   // Search visualizations by title or description
   const { data: vizData } = await client
     .from("visualizations")
     .select("*, profiles!author_id(id, username, display_name, avatar_url)")
     .eq("is_published", true)
-    .or(`title.ilike.%${q}%,description.ilike.%${q}%`);
+    .or(`title.ilike.%${qSafe}%,description.ilike.%${qSafe}%`);
 
   // Search articles by title
   const { data: artData } = await client
     .from("articles")
     .select("*, profiles!author_id(id, username, display_name, avatar_url)")
     .eq("is_published", true)
-    .or(`title.ilike.%${q}%,body_md.ilike.%${q}%`);
+    .or(`title.ilike.%${qSafe}%,body_md.ilike.%${qSafe}%`);
 
   const results: FeedItem[] = [];
 
@@ -408,6 +436,36 @@ export async function searchContent(
     }
   }
 
+  // Search wiki entries
+  const { data: wikiData } = await client
+    .from("wiki_entries")
+    .select("id, slug, title, category, summary, tags, likes_count, comments_count, views_count, created_at")
+    .eq("is_published", true)
+    .or(`title.ilike.%${qSafe}%,summary.ilike.%${qSafe}%`);
+
+  for (const w of wikiData ?? []) {
+    const matches =
+      (w.title ?? "").toLowerCase().includes(q.toLowerCase()) ||
+      (w.summary ?? "").toLowerCase().includes(q.toLowerCase()) ||
+      (w.tags ?? []).some((t: string) => t.toLowerCase().includes(q.toLowerCase()));
+    if (matches) {
+      results.push({
+        type: "wiki",
+        id: w.id,
+        slug: w.slug,
+        title: w.title,
+        description: (w.summary ?? "").slice(0, 150),
+        coverUrl: null,
+        posterUrl: null,
+        tags: w.tags ?? [],
+        author: { id: "", username: "", displayName: "", avatarUrl: null },
+        likesCount: w.likes_count ?? 0,
+        commentsCount: w.comments_count ?? 0,
+        createdAt: w.created_at,
+      });
+    }
+  }
+
   return results;
 }
 
@@ -444,12 +502,14 @@ export async function getUserBookmarks(
 
   const vizIds: string[] = [];
   const articleIds: string[] = [];
+  const wikiIds: string[] = [];
   const rowMap = new Map<string, { targetType: string; bookmarkedAt: string }>();
   for (const r of rows) {
     const key = `${r.target_type}:${r.target_id}`;
     rowMap.set(key, { targetType: r.target_type, bookmarkedAt: r.created_at ?? r.createdAt });
     if (r.target_type === "visualization") vizIds.push(r.target_id);
     else if (r.target_type === "article") articleIds.push(r.target_id);
+    else if (r.target_type === "wiki") wikiIds.push(r.target_id);
   }
 
   const results: FeedItem[] = [];
@@ -499,6 +559,30 @@ export async function getUserBookmarks(
         likesCount: a.likes_count ?? a.likesCount ?? 0,
         commentsCount: a.comments_count ?? a.commentsCount ?? 0,
         createdAt: meta?.bookmarkedAt ?? a.created_at ?? a.createdAt,
+      });
+    }
+  }
+
+  if (wikiIds.length) {
+    const { data: wikiData } = await client
+      .from("wiki_entries")
+      .select("id, slug, title, category, summary, tags, likes_count, comments_count, views_count, created_at")
+      .in("id", wikiIds);
+    for (const w of wikiData ?? []) {
+      const meta = rowMap.get(`wiki:${w.id}`);
+      results.push({
+        type: "wiki",
+        id: w.id,
+        slug: w.slug,
+        title: w.title,
+        description: (w.summary ?? "").slice(0, 150),
+        coverUrl: null,
+        posterUrl: null,
+        tags: w.tags ?? [],
+        author: { id: "", username: "", displayName: "", avatarUrl: null },
+        likesCount: w.likes_count ?? 0,
+        commentsCount: w.comments_count ?? 0,
+        createdAt: meta?.bookmarkedAt ?? w.created_at,
       });
     }
   }

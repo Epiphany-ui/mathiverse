@@ -127,8 +127,7 @@ export type GenerationAction =
   | { type: "retry" }
   | { type: "take_over" }
   | { type: "save_manual_version"; code: string }
-  | { type: "rollback"; versionId: string }
-  | { type: "publish"; versionId: string };
+  | { type: "rollback"; versionId: string };
 
 // ─── Events (discriminated union) ──────────────────────────────
 

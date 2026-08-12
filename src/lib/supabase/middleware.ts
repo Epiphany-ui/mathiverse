@@ -37,8 +37,44 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Enforce timed bans on ALL routes (pages + API), skip static assets only
+  const isStatic = request.nextUrl.pathname.startsWith("/_next/");
+
+  if (user && !isStatic) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("banned_until")
+      .eq("id", user.id)
+      .single();
+
+    if (profile?.banned_until && new Date(profile.banned_until) > new Date()) {
+      await supabase.auth.signOut();
+      const isApi = request.nextUrl.pathname.startsWith("/api/");
+      if (isApi) {
+        // API: return 403 JSON, carry sign-out cookies
+        const res = NextResponse.json(
+          { error: "你的账号已被封禁。如有疑问请联系管理员。" },
+          { status: 403 },
+        );
+        for (const cookie of supabaseResponse.cookies.getAll()) {
+          res.cookies.set(cookie.name, cookie.value, cookie);
+        }
+        return res;
+      }
+      // Page: redirect to login with error param
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      url.searchParams.set("error", "banned");
+      const res = NextResponse.redirect(url);
+      for (const cookie of supabaseResponse.cookies.getAll()) {
+        res.cookies.set(cookie.name, cookie.value, cookie);
+      }
+      return res;
+    }
+  }
+
   // Protected routes: redirect to /auth/login if not authenticated
-  const protectedPaths = ["/sandbox", "/settings", "/create"];
+  const protectedPaths = ["/sandbox", "/settings", "/create", "/admin", "/wiki/new"];
   const isProtected = protectedPaths.some((p) =>
     request.nextUrl.pathname.startsWith(p),
   );

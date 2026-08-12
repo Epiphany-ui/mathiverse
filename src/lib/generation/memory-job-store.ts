@@ -84,6 +84,26 @@ export class MemoryGenerationJobStore implements GenerationJobStore {
     return null;
   }
 
+  async getMostRecentJob(
+    owner: GenerationOwner,
+  ): Promise<GenerationJobSnapshot | null> {
+    const key = this.ownerKey(owner);
+    const owned = this.ownerIndex.get(key);
+    if (!owned) return null;
+
+    let mostRecent: GenerationJobSnapshot | null = null;
+    for (const id of owned) {
+      const job = this.jobs.get(id);
+      if (
+        job &&
+        (!mostRecent || job.updatedAt > mostRecent.updatedAt)
+      ) {
+        mostRecent = job;
+      }
+    }
+    return mostRecent;
+  }
+
   async getJobById(jobId: string): Promise<GenerationJobSnapshot | null> {
     return this.jobs.get(jobId) ?? null;
   }

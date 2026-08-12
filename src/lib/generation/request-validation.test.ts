@@ -9,7 +9,7 @@ test("generation inputs enforce prompt, code, quality, and format bounds", () =>
   assert.ok("errors" in validateCreateJobInput({ operation: "generate", mode: "new", prompt: "ok", format: "webm" }));
 });
 
-test("publish requires its owned version id, not a redundant code field", () => {
-  const result = validatePatchAction({ type: "publish", versionId: "version-1" });
-  assert.deepEqual(result, { action: { type: "publish", versionId: "version-1" } });
+test("rollback requires its owned version id", () => {
+  const result = validatePatchAction({ type: "rollback", versionId: "version-1" });
+  assert.deepEqual(result, { action: { type: "rollback", versionId: "version-1" } });
 });

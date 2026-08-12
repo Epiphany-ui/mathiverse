@@ -125,11 +125,12 @@ export async function POST(request: NextRequest) {
         videoPersisted = true;
         console.log("[visualizations] Video persisted to Supabase Storage");
       } else {
-        // Still publish — the video proxy will serve it in local dev.
-        // In production, the user should re-render to trigger a new upload.
+        // Local renderer URL won't work in production.  Drop the video so
+        // the published viz shows as code-only rather than a broken player.
+        persistedVideoUrl = null;
         console.warn(
-          "[visualizations] Video persistence failed — check SUPABASE_SERVICE_ROLE_KEY and renderer connectivity. " +
-            "The video will be served via proxy in local dev.",
+          "[visualizations] Video persistence failed — published without video. " +
+            "Check SUPABASE_SERVICE_ROLE_KEY and renderer connectivity.",
         );
       }
     }
@@ -158,9 +159,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Publishing is independent from RAG indexing. A client payload is not
-    // trusted render evidence, so indexing is deferred to the generation
-    // service after it verifies the render artifact server-side.
+    // Fire-and-forget RAG indexing — non-blocking, degrades gracefully
+    import("@/lib/ai/retrieval").then(({ tryAutoIndex }) =>
+      tryAutoIndex({
+        title: title as string,
+        description: description as string ?? "",
+        code: sourceCode as string,
+        tags: tags as string[] ?? [],
+      }).catch(() => {}),
+    );
 
     return NextResponse.json(
       { id: data.id, videoPersisted },

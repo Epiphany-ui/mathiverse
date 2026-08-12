@@ -94,6 +94,44 @@
   html { color-scheme: light; }
 }
 
+/* ─── Dark Mode ─── */
+.dark {
+  --primary: #d48f73;
+  --primary-active: #cc785c;
+  --primary-foreground: #141413;
+
+  --canvas: #181715;
+  --background: #181715;
+  --surface-card: #252320;
+  --surface-dark: #0d0c0a;
+  --surface-dark-elevated: #1f1e1b;
+  --surface-dark-soft: #1a1917;
+
+  --ink: #f2f3ed;
+  --foreground: #f2f3ed;
+  --body: #c4c0b8;
+  --body-strong: #d4d0c8;
+  --muted: #9c9890;
+  --muted-foreground: #9c9890;
+  --card-foreground: #f2f3ed;
+  --secondary-foreground: #f2f3ed;
+  --accent-foreground: #f2f3ed;
+
+  --hairline: #3d3a36;
+  --border: #3d3a36;
+  --input: #252320;
+  --ring: #d48f73;
+
+  --card: #252320;
+  --secondary: #181715;
+  --secondary-foreground: #f2f3ed;
+
+  color-scheme: dark;
+}
+.dark html { color-scheme: dark; }
+.dark body::before { opacity: 0.3; }
+.dark body::after { opacity: 0.5; }
+
 /* ─── Paper Texture ─── */
 @layer base {
   body::before {

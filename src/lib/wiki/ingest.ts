@@ -154,29 +154,30 @@ export async function upsertWikiEntry(
   item: WikiManifestItem,
   rewritten: { title: string; summary: string; bodyMd: string },
   source: WikipediaSource,
+  opts?: { authorId?: string },
 ): Promise<{ id: string } | { error: string }> {
   const client = getAdminClient();
   if (!client) return { error: "SUPABASE_SERVICE_ROLE_KEY 未配置" };
 
+  const row: Record<string, unknown> = {
+    slug: item.slug,
+    title: rewritten.title,
+    category: item.category,
+    summary: rewritten.summary,
+    body_md: rewritten.bodyMd,
+    cover_url: source.coverUrl,
+    tags: item.tags ?? [],
+    wikipedia_title: item.wikipediaTitle.replace(/%27|_/g, (m) =>
+      m === "%27" ? "'" : " ",
+    ),
+    wikipedia_url: source.pageUrl,
+    is_published: true,
+  };
+  if (opts?.authorId) row.author_id = opts.authorId;
+
   const { data, error } = await (client as any)
     .from("wiki_entries")
-    .upsert(
-      {
-        slug: item.slug,
-        title: rewritten.title,
-        category: item.category,
-        summary: rewritten.summary,
-        body_md: rewritten.bodyMd,
-        cover_url: source.coverUrl,
-        tags: item.tags ?? [],
-        wikipedia_title: item.wikipediaTitle.replace(/%27|_/g, (m) =>
-          m === "%27" ? "'" : " ",
-        ),
-        wikipedia_url: source.pageUrl,
-        is_published: true,
-      },
-      { onConflict: "slug" },
-    )
+    .upsert(row, { onConflict: "slug" })
     .select("id")
     .single();
 

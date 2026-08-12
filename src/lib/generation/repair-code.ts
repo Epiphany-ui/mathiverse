@@ -54,9 +54,8 @@ const SCENE_CLASS_PATTERN =
  * never accepted. The returned code is validated to contain a Manim import and
  * a Scene/ThreeDScene/MovingCameraScene subclass before it is returned.
  *
- * NOTE: `signal` is accepted for interface compatibility and will be used once
- * AbortSignal support is added to the DeepSeek client. It does NOT cancel
- * in-flight requests yet — ChatCompletionRequest has no `signal` field.
+ * The signal is forwarded to the DeepSeek client so cancellation aborts the
+ * in-flight request (chatCompletion supports `signal`).
  */
 export async function repairCode(input: {
   code: string;
@@ -64,7 +63,7 @@ export async function repairCode(input: {
   prompt: string;
   signal?: AbortSignal;
 }): Promise<string> {
-  const { code, issues, prompt } = input;
+  const { code, issues, prompt, signal } = input;
 
   const messages: AIMessage[] = [
     { role: "system", content: REPAIR_SYSTEM_PROMPT },
@@ -79,12 +78,12 @@ export async function repairCode(input: {
     },
   ];
 
-  // input.signal intentionally not forwarded — see NOTE above.
   const response = await chatCompletion({
     messages,
     model: MODELS.code,
     reasoning_effort: "high",
     max_tokens: 8192,
+    signal,
   });
 
   const repaired = extractCodeBlock(response);
