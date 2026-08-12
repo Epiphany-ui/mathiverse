@@ -29,9 +29,11 @@ export function StudioShell({ controller, initialPrompt, onOpenPublish }: { cont
   const working = !state.isTakingOver && (state.snapshot?.status === "queued" || state.snapshot?.status === "running");
   const rawVideo = state.snapshot?.render?.url;
   const mediaError = Boolean(rawVideo && failedVideo === rawVideo);
-  // Takeover freezes the generation pipeline — show idle canvas so the
-  // spinner doesn't spin forever while the user edits.
-  const canvasState = state.isTakingOver ? "idle" : (mediaError ? "error" : getCanvasState(state.snapshot));
+  // Takeover freezes the generation pipeline but preserves the last render
+  // so the user doesn't lose their video while editing.
+  const canvasState = state.isTakingOver
+    ? (state.snapshot?.render ? "preview" : "idle")
+    : (mediaError ? "error" : getCanvasState(state.snapshot));
   const video = rawVideo && isLocalRendererUrl(rawVideo) ? `/api/video-proxy?url=${encodeURIComponent(rawVideo)}` : rawVideo;
   const phaseIndex = ["planning", "retrieving", "generating", "validating", "rendering"].indexOf(state.snapshot?.phase ?? "");
 

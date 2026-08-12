@@ -1,4 +1,4 @@
-import { applyGenerationEvent } from "@/lib/generation/state-machine";
+import { applyGenerationEvent, isTerminalStatus } from "@/lib/generation/state-machine";
 import type {
   GenerationEvent,
   GenerationJobSnapshot,
@@ -30,6 +30,7 @@ export type StudioClientAction =
   | { type: "version.selected"; version: GenerationVersion }
   | { type: "mobile.selected"; panel: MobileStudioPanel }
   | { type: "job.recovered"; jobId: string }
+  | { type: "job.cancelled.locally" }
   | { type: "error"; message: string | null };
 
 export function createStudioClientState({
@@ -191,6 +192,14 @@ export function studioClientReducer(
         // Keep editorCode but reset authoritative flag so the incoming
         // snapshot's code wins, mirroring a fresh mount.
         hasAuthoritativeCode: false,
+      };
+    case "job.cancelled.locally":
+      if (!state.snapshot || isTerminalStatus(state.snapshot.status)) return state;
+      return {
+        ...state,
+        snapshot: { ...state.snapshot, status: "cancelled" as const },
+        connection: "closed",
+        isTakingOver: false,
       };
     case "error":
       return { ...state, error: action.message };

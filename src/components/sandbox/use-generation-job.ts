@@ -179,6 +179,13 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
     }
   }, []);
 
+  const cancel = useCallback(async () => {
+    const result = await patch({ type: "cancel" });
+    if (result?.success) {
+      dispatch({ type: "job.cancelled.locally" });
+    }
+  }, [patch]);
+
   const takeOver = useCallback(async () => {
     sourceRef.current?.close();
     dispatch({ type: "takeover.started" });
@@ -195,7 +202,7 @@ export function useGenerationJob(options: UseGenerationJobOptions) {
     renderManually: () => start("render", "渲染当前代码", "-ql"),
     repairManually: () => start("repair", "修复当前代码并重新渲染", "-ql"),
     renderHighQuality: () => start("high_quality_render", "高质量渲染当前代码", "-qh"),
-    cancel: () => patch({ type: "cancel" }),
+    cancel,
     takeOver,
     saveManualVersion: async () => {
       const result = await patch({ type: "save_manual_version", code: stateRef.current.editorCode });
