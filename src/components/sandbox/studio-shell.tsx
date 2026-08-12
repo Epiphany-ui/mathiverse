@@ -63,7 +63,7 @@ export function StudioShell({ controller, initialPrompt, onOpenPublish }: { cont
     </div>
     <section className={styles.codePanel} data-studio-motion-layer="code" aria-label="Manim 代码">
       <div className={styles.codeHead}><span>CODE / 03</span><b>scene.py</b><button type="button" onClick={() => void controller.saveManualVersion()}>保存版本</button></div>
-      <div className={styles.editor}><CodeEditor value={state.editorCode} onChange={controller.setEditorCode} externalUpdateMode="immediate" /></div>
+      <div className={styles.editor}><CodeEditor value={state.editorCode} onChange={controller.setEditorCode} /></div>
     </section>
     <nav className={styles.mobileTabs} aria-label="工作区面板">{([["task", ListTodo, "任务"], ["canvas", Clapperboard, "画布"], ["code", Braces, "代码"]] as const).map(([panel, Icon, label]) => <button key={panel} type="button" aria-current={state.activeMobilePanel === panel ? "page" : undefined} onClick={() => controller.selectMobilePanel(panel)}><Icon />{label}</button>)}</nav>
   </main>;
