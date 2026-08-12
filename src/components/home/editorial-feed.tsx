@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ContentThumbnail } from "@/components/content/content-thumbnail";
+import { InlineMath } from "@/components/content/inline-math";
 import type { FeedItem } from "@/types";
 import type { EditorialSlots } from "./home-data";
 import styles from "./home-gallery.module.css";
@@ -33,8 +34,14 @@ function EditorialItem({
           <span className={styles.monoLabel}>
             {item.type === "visualization" ? "VISUAL STUDY" : "ESSAY"}
           </span>
-          <h3>{item.title}</h3>
-          {item.description && <p>{item.description}</p>}
+          <h3>
+            <InlineMath text={item.title} />
+          </h3>
+          {item.description && (
+            <p>
+              <InlineMath text={item.description} />
+            </p>
+          )}
           <span className={styles.editorialAuthor}>{item.author.displayName}</span>
         </div>
       </Link>

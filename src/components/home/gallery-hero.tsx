@@ -58,6 +58,7 @@ export function GalleryHero({
   }, [clearStartupTimeout]);
 
   const videoUrl = feature?.videoUrl ?? null;
+  const posterUrl = feature?.posterUrl ?? null;
 
   useEffect(() => {
     clearStartupTimeout();
@@ -68,13 +69,18 @@ export function GalleryHero({
     }
 
     dispatchMedia({ type: "source-changed" });
-    startupTimeoutRef.current = setTimeout(() => {
-      startupTimeoutRef.current = null;
-      dispatchMedia({ type: "failed" });
-    }, GALLERY_MEDIA_STARTUP_TIMEOUT_MS);
+    // If a real poster frame exists, it's acceptable content — keep
+    // buffering until the video can actually play.  Without a poster,
+    // give up after the startup window and show the fallback art.
+    if (!posterUrl) {
+      startupTimeoutRef.current = setTimeout(() => {
+        startupTimeoutRef.current = null;
+        dispatchMedia({ type: "failed" });
+      }, GALLERY_MEDIA_STARTUP_TIMEOUT_MS);
+    }
 
     return clearStartupTimeout;
-  }, [clearStartupTimeout, reducedMotion, videoUrl]);
+  }, [clearStartupTimeout, reducedMotion, videoUrl, posterUrl]);
 
   // Autoplay carousel
   useEffect(() => {
@@ -111,8 +117,12 @@ export function GalleryHero({
     }
   };
 
+  // Only start playback once enough data is buffered — otherwise play()
+  // succeeds immediately, the poster disappears, and the video stalls on a
+  // black first frame while the rest buffers.
   const handleCanPlay = () => {
-    if (mediaState === "checking") {
+    if (mediaState !== "checking") return;
+    if ((videoRef.current?.readyState ?? 0) >= 3) {
       void playVideo();
     }
   };
@@ -135,25 +145,38 @@ export function GalleryHero({
   return (
     <section className={styles.galleryHero} aria-labelledby="gallery-title">
       <div className={styles.heroMedia}>
-        {showVideo ? (
+        {showVideo && (
           <video
             ref={videoRef}
-            className={styles.heroVideo}
+            className={`${styles.heroVideo} ${
+              mediaState === "video" || mediaState === "paused"
+                ? styles.heroVideoVisible
+                : ""
+            }`}
             src={feature?.videoUrl ?? undefined}
-            poster={feature?.posterUrl ?? undefined}
             muted
             loop
             autoPlay
             playsInline
-            preload="metadata"
+            preload="auto"
             onCanPlay={handleCanPlay}
             onError={activateFallback}
             onPause={() => dispatchMedia({ type: "paused" })}
             onPlay={markPlaying}
           />
-        ) : (
-          <MathematicalFallback />
         )}
+        {/* Real poster frame stays visible while the video buffers */}
+        {mediaState !== "video" &&
+          mediaState !== "paused" &&
+          (feature?.posterUrl ? (
+            <img
+              className={styles.heroPoster}
+              src={feature.posterUrl}
+              alt=""
+            />
+          ) : (
+            <MathematicalFallback />
+          ))}
       </div>
       <div className={styles.heroScrim} aria-hidden="true" />
 

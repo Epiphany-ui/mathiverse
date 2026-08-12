@@ -310,6 +310,10 @@ blockquote.book-quote::before {
 .prose-custom .katex { font-size: 1.08em; }
 .prose-custom .katex-display > .katex { font-size: 1.15em; }
 
+/* Inline math inside headings/cards (InlineMath component) */
+.inline-math .katex { font-size: 1em; }
+.inline-math { white-space: normal; }
+
 /* ─── Card System (replaces glassmorphism) ─── */
 .card-cream {
   background: var(--surface-card);
