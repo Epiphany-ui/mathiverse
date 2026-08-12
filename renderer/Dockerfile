@@ -1,7 +1,7 @@
 FROM manimcommunity/manim:v0.19.0
 
 # Install FastAPI + uvicorn
-RUN pip install fastapi uvicorn
+RUN pip install --no-cache-dir fastapi uvicorn && python -c "import uvicorn; print('uvicorn OK')"
 
 WORKDIR /app
 COPY server.py core.py requirements.txt ./
