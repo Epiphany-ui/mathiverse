@@ -83,10 +83,21 @@ KEY_LOCKS: dict[str, _KeyLockEntry] = {}
 KEY_LOCKS_GUARD = asyncio.Lock()
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Warm up Manim at startup: the first `manim --version` probe imports
+    # numpy/scipy/manim, which can exceed the per-request timeout on slow
+    # hosts (Render free tier).  Doing it here in the background means
+    # requests never hit a cold import.
+    asyncio.get_running_loop().create_task(asyncio.to_thread(get_manim_version))
+    yield
+
+
 app = FastAPI(
     title="Mathiverse Renderer",
     description="Local Manim rendering service for Mathiverse",
     version="0.2.0",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -163,7 +174,7 @@ def get_manim_version() -> str | None:
             [sys.executable, "-m", "manim", "--version"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=60,  # cold imports (numpy/scipy) can be slow on weak hosts
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
