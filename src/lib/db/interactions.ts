@@ -150,6 +150,9 @@ export async function toggleFollow(
   followingId: string,
   currentlyFollowing: boolean,
 ): Promise<{ following: boolean; error?: string }> {
+  if (followerId === followingId) {
+    return { following: false, error: "不能关注自己" };
+  }
   if (currentlyFollowing) {
     const { error } = await client
       .from("follows")

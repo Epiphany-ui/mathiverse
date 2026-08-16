@@ -85,18 +85,38 @@ export function SandboxContent({ forkId, initialPrompt, jobId }: SandboxContentP
   useEffect(() => {
     if (forkId || initialPrompt) return;
     try {
+      // One-shot handoff from wiki cards first, then the persistent draft.
       const code = localStorage.getItem("sandbox_code");
       const prompt = localStorage.getItem("sandbox_prompt");
       if (code) {
         controller.setEditorCode(code);
         localStorage.removeItem("sandbox_code");
+      } else {
+        const draftCode = localStorage.getItem("sandbox_draft_code");
+        if (draftCode) controller.setEditorCode(draftCode);
       }
       if (prompt) {
         queueMicrotask(() => setPromptSeed(prompt));
         localStorage.removeItem("sandbox_prompt");
+      } else {
+        const draftPrompt = localStorage.getItem("sandbox_draft_prompt");
+        if (draftPrompt) queueMicrotask(() => setPromptSeed(draftPrompt));
       }
     } catch {}
   }, [forkId, initialPrompt, controller.setEditorCode]);
+
+  // Autosave the workspace as a draft — closing the tab mid-edit no longer
+  // throws the code away.
+  useEffect(() => {
+    const { editorCode, hasAuthoritativeCode } = controller.state;
+    if (!hasAuthoritativeCode || !editorCode) return;
+    const id = setTimeout(() => {
+      try {
+        localStorage.setItem("sandbox_draft_code", editorCode);
+      } catch {}
+    }, 800);
+    return () => clearTimeout(id);
+  }, [controller.state.editorCode, controller.state.hasAuthoritativeCode]);
 
   // When entrance is "first" and a recovered job loads mid-animation,
   // let the animation finish before switching.  The CSS animation runs

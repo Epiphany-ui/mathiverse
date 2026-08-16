@@ -9,13 +9,14 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { ingestEntry, ingestAll } from "@/lib/wiki/ingest";
 import { WIKI_MANIFEST } from "@/lib/wiki/manifest";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  // Admin gate
+  // Admin gate — constant-time token comparison.
   const token = request.headers.get("x-admin-token");
   const expected = process.env.WIKI_ADMIN_TOKEN;
   if (!expected) {
@@ -24,7 +25,15 @@ export async function POST(request: NextRequest) {
       { status: 503 },
     );
   }
-  if (!token || token !== expected) {
+  if (!token) {
+    return NextResponse.json(
+      { error: "无权限" },
+      { status: 401 },
+    );
+  }
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json(
       { error: "无权限" },
       { status: 401 },
@@ -32,8 +41,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
-    const { slug, dryRun = false } = body;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+    }
+    const { slug, dryRun } = body as { slug?: unknown; dryRun?: unknown };
+    // Only accept a real boolean — string "false" must never trigger a dry-run.
+    const isDryRun = dryRun === true;
 
     if (typeof slug === "string" && slug.trim()) {
       const item = WIKI_MANIFEST.find((i) => i.slug === slug.trim());
@@ -43,11 +62,11 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         );
       }
-      const result = await ingestEntry(item, Boolean(dryRun));
+      const result = await ingestEntry(item, isDryRun);
       return NextResponse.json({ results: [result] }, { status: 201 });
     }
 
-    const results = await ingestAll(Boolean(dryRun));
+    const results = await ingestAll(isDryRun);
     return NextResponse.json({ results }, { status: 201 });
   } catch (err) {
     console.error("[wiki-ingest] API error:", err);

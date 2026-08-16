@@ -23,8 +23,12 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
-  const search = url.searchParams.get("search") ?? "";
+  const pageParam = Number(url.searchParams.get("page") || 1);
+  const page =
+    Number.isInteger(pageParam) && pageParam >= 1 && pageParam <= 10_000
+      ? pageParam
+      : 1;
+  const search = (url.searchParams.get("search") ?? "").slice(0, 100);
   const pageSize = 20;
 
   let query = admin
@@ -52,7 +56,7 @@ export async function GET(request: Request) {
     .range((page - 1) * pageSize, page * pageSize - 1);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "用户列表加载失败" }, { status: 500 });
   }
 
   return NextResponse.json({

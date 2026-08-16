@@ -4,6 +4,7 @@ import Link from "next/link";
 import { GlassCard } from "@/components/shared/glass-card";
 import { TiltCard } from "@/components/shared/tilt-card";
 import { ContentThumbnail } from "@/components/content/content-thumbnail";
+import { MathText } from "@/components/content/math-text";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Heart,
@@ -71,10 +72,10 @@ export function FeedCard({ item, className }: FeedCardProps) {
         <GlassCard className={cn("p-5 cursor-pointer h-full flex flex-col gap-3 border-[#e6dfd8]", className)} hover>
           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#cc785c]/10 text-[#cc785c] w-fit">百科</span>
           <h3 className="font-[family-name:var(--font-cormorant)] text-lg font-semibold text-[#141413] leading-tight line-clamp-2">
-            {item.title}
+            <MathText text={item.title} />
           </h3>
           {item.description && (
-            <p className="text-sm text-[#6c6a64] line-clamp-2">{item.description}</p>
+            <p className="text-sm text-[#6c6a64] line-clamp-2"><MathText text={item.description} /></p>
           )}
           <div className="flex items-center gap-3 mt-auto text-xs text-[#6c6a64]/60">
             <span>{item.likesCount} 赞</span>
@@ -129,7 +130,7 @@ function VizCard({ item, href, className }: { item: FeedItem; href: string; clas
             </span>
             <div className="absolute bottom-0 left-0 right-0 p-4">
               <h3 className="text-white text-base font-semibold leading-snug line-clamp-2 drop-shadow-md">
-                {item.title}
+                <MathText text={item.title} />
               </h3>
             </div>
           </div>
@@ -184,11 +185,11 @@ function ArticleCard({ item, href, className }: { item: FeedItem; href: string; 
               文章
             </span>
             <h3 className="font-[family-name:var(--font-cormorant)] text-lg font-normal leading-snug tracking-[-0.3px] text-[#141413] line-clamp-2 group-hover:text-[#cc785c] transition-colors">
-              {item.title}
+              <MathText text={item.title} />
             </h3>
             {item.description && (
               <p className="mt-2 text-xs text-[#6c6a64] leading-relaxed line-clamp-3">
-                {item.description}
+                <MathText text={item.description} />
               </p>
             )}
             <div className="flex-1" />

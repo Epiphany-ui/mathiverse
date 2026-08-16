@@ -10,6 +10,8 @@ import { Calendar } from "lucide-react";
 import { FollowButton } from "@/components/shared/follow-button";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeWebsiteUrl } from "@/lib/utils";
+import { MathText } from "@/components/content/math-text";
 import {
   getProfileByUsername,
   getUserVisualizations,
@@ -116,12 +118,12 @@ export default async function UserProfilePage({
               </div>
               {profile.bio && (
                 <p className="text-sm text-muted-foreground/80 leading-relaxed">
-                  {profile.bio}
+                  <MathText text={profile.bio} />
                 </p>
               )}
-              {profile.website && (
+              {sanitizeWebsiteUrl(profile.website) && (
                 <a
-                  href={profile.website}
+                  href={sanitizeWebsiteUrl(profile.website)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline"

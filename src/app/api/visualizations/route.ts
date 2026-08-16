@@ -17,6 +17,9 @@ import { isLocalRendererUrl } from "@/lib/utils";
 export const runtime = "nodejs";
 
 const STORAGE_BUCKET = "renders";
+/** Renderer clips are short; reject anything implausibly large to protect
+ *  the server's memory from abuse. */
+const MAX_MEDIA_BYTES = 100 * 1024 * 1024; // 100 MB
 
 /**
  * Fetch a media file from the renderer and upload to Supabase Storage.
@@ -24,7 +27,8 @@ const STORAGE_BUCKET = "renders";
  */
 async function persistMedia(url: string): Promise<string | null> {
   // Extract filename from renderer URL like http://127.0.0.1:9876/output/abc_Scene.mp4
-  const filename = url.split("/").pop();
+  const rawName = url.split("/").pop() ?? "";
+  const filename = rawName.replace(/[^a-zA-Z0-9._-]/g, "_");
   if (!filename) return null;
 
   try {
@@ -35,7 +39,18 @@ async function persistMedia(url: string): Promise<string | null> {
       return null;
     }
 
+    const contentLength = Number(res.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_MEDIA_BYTES) {
+      console.warn("[visualizations] Media too large to persist:", contentLength);
+      return null;
+    }
+
     const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.byteLength > MAX_MEDIA_BYTES) {
+      console.warn("[visualizations] Media exceeded size cap after download");
+      return null;
+    }
+
     const mimeType = filename.endsWith(".gif")
       ? "image/gif"
       : filename.endsWith(".jpg") || filename.endsWith(".jpeg")
@@ -82,7 +97,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+    }
+    const parsed = body as Record<string, unknown>;
     const {
       title,
       description = "",
@@ -91,12 +115,18 @@ export async function POST(request: NextRequest) {
       videoUrl = null,
       posterUrl = null,
       forkedFrom = null,
-    } = body;
+    } = parsed;
 
     // Validate required fields
     if (!title || typeof title !== "string" || !title.trim()) {
       return NextResponse.json(
         { error: "请输入标题" },
+        { status: 400 },
+      );
+    }
+    if (title.length > 200) {
+      return NextResponse.json(
+        { error: "标题不能超过 200 个字符" },
         { status: 400 },
       );
     }
@@ -107,13 +137,21 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    if (sourceCode.length > 200_000) {
+      return NextResponse.json(
+        { error: "代码过长" },
+        { status: 400 },
+      );
+    }
 
-    // Ensure tags is an array of strings
+    // Ensure tags is an array of strings (bounded)
     const cleanTags = Array.isArray(tags)
-      ? tags.filter(
-          (tag: unknown): tag is string =>
-            typeof tag === "string" && tag.trim().length > 0,
-        )
+      ? tags
+          .filter(
+            (tag: unknown): tag is string =>
+              typeof tag === "string" && tag.trim().length > 0,
+          )
+          .slice(0, 20)
       : [];
 
     // If the video is from the renderer, upload it to Supabase Storage
@@ -153,7 +191,7 @@ export async function POST(request: NextRequest) {
       .from("visualizations")
       .insert({
         title: title.trim(),
-        description: (description ?? "").trim(),
+        description: typeof description === "string" ? description.trim() : "",
         tags: cleanTags,
         source_code: sourceCode,
         video_url: persistedVideoUrl,
@@ -176,10 +214,10 @@ export async function POST(request: NextRequest) {
     // Fire-and-forget RAG indexing — non-blocking, degrades gracefully
     import("@/lib/ai/retrieval").then(({ tryAutoIndex }) =>
       tryAutoIndex({
-        title: title as string,
-        description: description as string ?? "",
-        code: sourceCode as string,
-        tags: tags as string[] ?? [],
+        title: title.trim(),
+        description: typeof description === "string" ? description.trim() : "",
+        code: sourceCode,
+        tags: cleanTags,
       }).catch(() => {}),
     );
 
@@ -190,7 +228,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("Visualization API error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "未知错误" },
+      { error: "发布失败，请重试" },
       { status: 500 },
     );
   }

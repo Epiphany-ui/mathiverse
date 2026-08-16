@@ -14,7 +14,44 @@ export const runtime = "nodejs";
 
 const AVATARS_BUCKET = "avatars";
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
-const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const ALLOWED_TYPES: string[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+const EXT_BY_TYPE: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+/** Verify the declared MIME type against magic bytes so disguised files
+ *  (HTML/SVG/scripts renamed to .png) never reach the public bucket. */
+function sniffImageType(buf: Buffer): string | null {
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buf.length >= 12 &&
+    buf.toString("ascii", 0, 4) === "RIFF" &&
+    buf.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  if (
+    buf.length >= 6 &&
+    (buf.toString("ascii", 0, 6) === "GIF87a" ||
+      buf.toString("ascii", 0, 6) === "GIF89a")
+  ) {
+    return "image/gif";
+  }
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   // Auth check
@@ -85,11 +122,20 @@ export async function POST(request: NextRequest) {
     });
 
     // Upload
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
-    const filePath = `${user.id}-${Date.now()}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
+    const sniffedType = sniffImageType(buffer);
+    if (!sniffedType || sniffedType !== file.type) {
+      return NextResponse.json(
+        { error: "文件内容与声明的图片格式不符" },
+        { status: 400 },
+      );
+    }
+    // Derive the extension from the verified type, never from the client's
+    // file name (which may contain separators or misleading extensions).
+    const ext = EXT_BY_TYPE[sniffedType] ?? "png";
+    const filePath = `${user.id}-${Date.now()}.${ext}`;
 
-    const publicUrl = await uploadToStorage(AVATARS_BUCKET, filePath, buffer, file.type);
+    const publicUrl = await uploadToStorage(AVATARS_BUCKET, filePath, buffer, sniffedType);
     if (!publicUrl) {
       return NextResponse.json(
         { error: "上传失败，请重试" },

@@ -37,10 +37,14 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Enforce timed bans on ALL routes (pages + API), skip static assets only
+  // Enforce timed bans on ALL routes (pages + API), skip static assets only.
+  // Admin API routes re-check the ban inside requireAdmin/requireOwner
+  // (getCurrentProfile), so this extra round trip is skipped for them —
+  // every admin action used to pay for this query twice.
   const isStatic = request.nextUrl.pathname.startsWith("/_next/");
+  const isAdminApi = request.nextUrl.pathname.startsWith("/api/admin/");
 
-  if (user && !isStatic) {
+  if (user && !isStatic && !isAdminApi) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("banned_until")

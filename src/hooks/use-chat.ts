@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { ChatMessage } from "@/types";
 
 import type { CodeChange } from "@/lib/ai/prompts";
@@ -23,6 +23,15 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Refs keep sendMessage's identity stable while always reading the latest
+  // messages/loading state (the previous deps re-created the callback on
+  // every message, which re-triggered caller effects).
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  const loadingRef = useRef(false);
+
   /**
    * Send a message to the AI assistant.
    * @param content The user's message text
@@ -31,7 +40,8 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
    */
   const sendMessage = useCallback(
     async (content: string, currentCode?: string, isFixMode?: boolean) => {
-      if (!content.trim() || isLoading) return;
+      if (!content.trim() || loadingRef.current) return;
+      loadingRef.current = true;
 
       setError(null);
 
@@ -57,6 +67,8 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
       // Fix mode: use dedicated non-streaming endpoint
       if (isFixMode) {
         try {
+          const controller = new AbortController();
+          abortRef.current = controller;
           const res = await fetch("/api/chat/fix", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -64,6 +76,7 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
               code: currentCode,
               error: content,
             }),
+            signal: controller.signal,
           });
 
           const data = await res.json();
@@ -102,17 +115,29 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
             }
           }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : "修复失败";
-          setError(msg);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: `❌ 修复失败: ${msg}` }
-                : m,
-            ),
-          );
+          if (err instanceof DOMException && err.name === "AbortError") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: m.content || "已取消" }
+                  : m,
+              ),
+            );
+          } else {
+            const msg = err instanceof Error ? err.message : "修复失败";
+            setError(msg);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: `❌ 修复失败: ${msg}` }
+                  : m,
+              ),
+            );
+          }
         } finally {
           setIsLoading(false);
+          loadingRef.current = false;
+          abortRef.current = null;
         }
         return;
       }
@@ -121,7 +146,7 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
         const controller = new AbortController();
         abortRef.current = controller;
 
-        const allMessages = [...messages, userMsg]
+        const allMessages = [...messagesRef.current, userMsg]
           .filter((m) => m.id !== "welcome")
           .map((m) => ({
             role: m.role,
@@ -144,7 +169,8 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
         }
 
         // Read SSE stream
-        const reader = res.body!.getReader();
+        if (!res.body) throw new Error("服务器返回了空响应体");
+        const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let fullContent = "";
         let buffer = "";
@@ -215,10 +241,11 @@ export function useChat({ onCodeExtracted, onChangesApplied }: UseChatOptions = 
         }
       } finally {
         setIsLoading(false);
+        loadingRef.current = false;
         abortRef.current = null;
       }
     },
-    [messages, isLoading, onCodeExtracted, onChangesApplied],
+    [onCodeExtracted, onChangesApplied],
   );
 
   const cancelSend = useCallback(() => {

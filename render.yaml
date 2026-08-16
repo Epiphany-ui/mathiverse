@@ -6,3 +6,11 @@ services:
     rootDir: renderer
     plan: free
     healthCheckPath: /health
+    envVars:
+      # The server binds loopback by default; inside the container it must
+      # listen on all interfaces for Render's health checks and proxy.
+      - key: RENDER_HOST
+        value: 0.0.0.0
+      # Optional: public URL for artifact links (e.g. https://renderer.example.com)
+      - key: RENDERER_PUBLIC_URL
+        value: ""

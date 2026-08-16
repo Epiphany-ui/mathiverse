@@ -18,7 +18,7 @@ export async function GET() {
     .select("id, slug, title, category, is_published, author_id, updated_at")
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: "词条列表加载失败" }, { status: 500 });
 
   // Batch-fetch authors
   const authorIds = [...new Set((data ?? []).map((d: any) => d.author_id).filter(Boolean))];

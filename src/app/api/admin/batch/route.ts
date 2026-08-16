@@ -11,7 +11,7 @@
 
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
-import { getAdminClient } from "@/lib/supabase/admin";
+import { asAdminDb, getAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,9 +28,11 @@ type BatchAction = (typeof VALID_ACTIONS)[number];
 
 export async function POST(request: Request) {
   let adminUserId: string;
+  let actorRole: string;
   try {
     const auth = await requireAdmin();
     adminUserId = auth.userId;
+    actorRole = auth.profile.role ?? "user";
   } catch {
     return NextResponse.json({ error: "无权限" }, { status: 401 });
   }
@@ -39,15 +41,27 @@ export async function POST(request: Request) {
   if (!admin) {
     return NextResponse.json({ error: "Supabase 未配置" }, { status: 503 });
   }
+  const db = asAdminDb(admin);
 
-  let body: { action?: string; targets?: string[]; params?: Record<string, unknown> };
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+  }
+  const parsed = body as { action?: unknown; targets?: unknown; params?: unknown };
 
-  const { action, targets = [], params = {} } = body;
+  const action = typeof parsed.action === "string" ? parsed.action : "";
+  const targets = Array.isArray(parsed.targets)
+    ? parsed.targets.filter((t): t is string => typeof t === "string")
+    : [];
+  const params =
+    parsed.params && typeof parsed.params === "object" && !Array.isArray(parsed.params)
+      ? (parsed.params as Record<string, unknown>)
+      : {};
 
   if (!action || !VALID_ACTIONS.includes(action as BatchAction)) {
     return NextResponse.json(
@@ -64,8 +78,16 @@ export async function POST(request: Request) {
 
   switch (action as BatchAction) {
     // ─── Users ──────────────────────────────────────────
-    case "ban_users": {
+    case "ban_users":
+    case "unban_users": {
+      const isBan = action === "ban_users";
       const duration = typeof params.duration === "string" ? params.duration : null;
+      if (duration !== null && !["1h", "1d", "7d", "30d"].includes(duration)) {
+        return NextResponse.json(
+          { error: "duration 必须是 1h、1d、7d 或 30d" },
+          { status: 400 },
+        );
+      }
       let bannedUntil: string;
       if (duration === "1h") bannedUntil = new Date(Date.now() + 3600_000).toISOString();
       else if (duration === "1d") bannedUntil = new Date(Date.now() + 86400_000).toISOString();
@@ -73,55 +95,85 @@ export async function POST(request: Request) {
       else if (duration === "30d") bannedUntil = new Date(Date.now() + 2592000_000).toISOString();
       else bannedUntil = "2999-12-31T23:59:59Z"; // permanent
 
-      // Fetch profiles to check for owners/admins (protected)
-      const { data: profiles } = await (admin as any)
+      // Only valid UUIDs reach the database; anything else is reported
+      // per-target without aborting the whole batch.
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validIds = targets.filter((t) => UUID_RE.test(t));
+      for (const t of targets) {
+        if (!UUID_RE.test(t)) {
+          results.push({ target: t, ok: false, error: "无效的用户 ID" });
+        }
+      }
+
+      // Fetch profiles to enforce the same role boundaries as the single-user
+      // endpoint: owners are untouchable, admins may only be managed by the
+      // owner, and nobody can ban/unban themselves.  A failed lookup aborts —
+      // proceeding blind could ban the owner.
+      const { data: profiles, error: lookupError } = await db
         .from("profiles")
         .select("id, role")
-        .in("id", targets);
-
-      const protectedIds = new Set(
-        (profiles ?? []).filter((p: any) => p.role === "owner").map((p: any) => p.id),
+        .in("id", validIds);
+      if (lookupError) {
+        return NextResponse.json(
+          { error: "查询用户失败，已中止批量操作" },
+          { status: 500 },
+        );
+      }
+      const roleById = new Map<string, string | null>(
+        (profiles ?? []).map((p) => [p.id as string, p.role as string | null]),
       );
 
-      for (const id of targets) {
-        if (protectedIds.has(id)) {
-          results.push({ target: id, ok: false, error: "不能封禁馆主" });
+      // Decide each target's fate first, then run the writes in parallel
+      // instead of serially awaiting every row (one round trip per row used
+      // to make bulk admin actions feel sluggish).
+      const toUpdate: string[] = [];
+      const decisions = new Map<string, { ok: boolean; error: string }>();
+      for (const id of validIds) {
+        const targetRole = roleById.get(id);
+        if (targetRole === "owner") {
+          decisions.set(id, { ok: false, error: "不能操作馆长账号" });
+        } else if (id === adminUserId) {
+          decisions.set(id, {
+            ok: false,
+            error: isBan ? "不能封禁自己" : "不能解封自己",
+          });
+        } else if (targetRole === "admin" && actorRole !== "owner") {
+          decisions.set(id, { ok: false, error: "只有馆长才能管理编辑" });
+        } else {
+          toUpdate.push(id);
+        }
+      }
+
+      const settled = await Promise.all(
+        toUpdate.map(async (id) => {
+          const { error } = await db
+            .from("profiles")
+            .update({ banned_until: isBan ? bannedUntil : null })
+            .eq("id", id);
+          return { id, error };
+        }),
+      );
+
+      for (const id of validIds) {
+        const decided = decisions.get(id);
+        if (decided) {
+          results.push({ target: id, ...decided });
           continue;
         }
-        const { error } = await (admin as any)
-          .from("profiles")
-          .update({ banned_until: bannedUntil })
-          .eq("id", id);
-        if (error) {
-          results.push({ target: id, ok: false, error: error.message });
-        } else {
-          results.push({ target: id, ok: true });
-        }
+        const outcome = settled.find((s) => s.id === id);
+        results.push(
+          outcome?.error
+            ? { target: id, ok: false, error: outcome.error.message }
+            : { target: id, ok: true },
+        );
       }
 
       // Audit log
-      (admin as any).from("admin_audit_log").insert({
+      db.from("admin_audit_log").insert({
         admin_id: adminUserId,
-        action: "batch_ban_users",
+        action: isBan ? "batch_ban_users" : "batch_unban_users",
         target_type: "profiles",
-        details: { count: targets.length, duration: duration ?? "permanent" },
-      }).then(() => {}, () => {});
-      break;
-    }
-
-    case "unban_users": {
-      for (const id of targets) {
-        const { error } = await (admin as any)
-          .from("profiles")
-          .update({ banned_until: null })
-          .eq("id", id);
-        results.push({ target: id, ok: !error, error: error?.message });
-      }
-      (admin as any).from("admin_audit_log").insert({
-        admin_id: adminUserId,
-        action: "batch_unban_users",
-        target_type: "profiles",
-        details: { count: targets.length },
+        details: { count: targets.length, duration: isBan ? (duration ?? "permanent") : undefined },
       }).then(() => {}, () => {});
       break;
     }
@@ -146,18 +198,23 @@ export async function POST(request: Request) {
         wiki_entries: "wiki_entries",
         comments: "comments",
       };
-      for (const [type, ids] of byType) {
-        const table = TABLE_MAP[type];
-        if (!table) continue;
-        const { error } = await (admin as any)
-          .from(table)
-          .delete()
-          .in("id", ids);
+      const deleteResults = await Promise.all(
+        [...byType.entries()].map(async ([type, ids]) => {
+          const table = TABLE_MAP[type];
+          if (!table) return { type, ids, error: null };
+          const { error } = await db
+            .from(table)
+            .delete()
+            .in("id", ids);
+          return { type, ids, error };
+        }),
+      );
+      for (const { type, ids, error } of deleteResults) {
         for (const id of ids) {
           results.push({ target: `${type}:${id}`, ok: !error, error: error?.message });
         }
       }
-      (admin as any).from("admin_audit_log").insert({
+      db.from("admin_audit_log").insert({
         admin_id: adminUserId,
         action: "batch_delete_content",
         target_type: "content",
@@ -170,14 +227,19 @@ export async function POST(request: Request) {
     case "publish_wiki":
     case "unpublish_wiki": {
       const isPublished = action === "publish_wiki";
-      for (const slug of targets) {
-        const { error } = await (admin as any)
-          .from("wiki_entries")
-          .update({ is_published: isPublished })
-          .eq("slug", slug);
+      const wikiResults = await Promise.all(
+        targets.map(async (slug) => {
+          const { error } = await db
+            .from("wiki_entries")
+            .update({ is_published: isPublished })
+            .eq("slug", slug);
+          return { slug, error };
+        }),
+      );
+      for (const { slug, error } of wikiResults) {
         results.push({ target: slug, ok: !error, error: error?.message });
       }
-      (admin as any).from("admin_audit_log").insert({
+      db.from("admin_audit_log").insert({
         admin_id: adminUserId,
         action: `batch_${isPublished ? "publish" : "unpublish"}_wiki`,
         target_type: "wiki_entries",

@@ -10,6 +10,7 @@ import { GlassCard } from "@/components/shared/glass-card";
 import { ScrollReveal } from "@/components/shared/scroll-reveal";
 import { cn } from "@/lib/utils";
 import { WIKI_CATEGORIES } from "@/lib/wiki/categories";
+import { MathText } from "@/components/content/math-text";
 import type { WikiEntry, WikiCategory } from "@/types";
 
 interface WikiExplorerProps {
@@ -125,13 +126,13 @@ export function WikiExplorer({ entries }: WikiExplorerProps) {
 
                     {/* Title */}
                     <h3 className="font-[family-name:var(--font-cormorant)] text-lg font-semibold text-[#141413] leading-tight">
-                      {entry.title}
+                      <MathText text={entry.title} />
                     </h3>
 
                     {/* Summary */}
                     {entry.summary && (
                       <p className="text-sm text-[#6c6a64] line-clamp-2 leading-relaxed">
-                        {entry.summary}
+                        <MathText text={entry.summary} />
                       </p>
                     )}
 

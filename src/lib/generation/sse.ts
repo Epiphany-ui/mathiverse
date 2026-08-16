@@ -85,9 +85,13 @@ export async function* sseEventStream(
     // Wait for next poll
     try {
       await new Promise<void>((resolve, reject) => {
-        const id = setTimeout(resolve, heartbeatMs);
+        const id = setTimeout(() => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        }, heartbeatMs);
         const onAbort = () => {
           clearTimeout(id);
+          signal.removeEventListener("abort", onAbort);
           reject(new DOMException("Aborted", "AbortError"));
         };
         signal.addEventListener("abort", onAbort, { once: true });

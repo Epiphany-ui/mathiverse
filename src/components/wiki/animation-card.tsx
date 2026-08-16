@@ -44,6 +44,9 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
   const [retryKey, setRetryKey] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const cancelledRef = useRef(false);
+  // In-flight fetch(es) — cancelling the card must actually stop the AI call
+  // and the render, not just hide the UI while they keep burning quota.
+  const abortRef = useRef<AbortController | null>(null);
 
   const advanceStage = useCallback((next: CardStage) => {
     setStage(next);
@@ -57,6 +60,17 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
     const run = async () => {
       // Reset cancellation flag on each effect run (React Strict Mode compat)
       cancelledRef.current = false;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      // StrictMode re-runs the effect: the first run's controller gets
+      // aborted by the cleanup while the second run has already reset
+      // cancelledRef.  Track the abort per-run so the superseded attempt
+      // exits silently instead of flashing a "生成失败".
+      let superseded = false;
+      controller.signal.addEventListener("abort", () => {
+        superseded = true;
+      });
       try {
         // Stage 1-3: AI code generation
         advanceStage("understanding");
@@ -72,6 +86,7 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
         const chatRes = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             messages: [
               {
@@ -88,7 +103,8 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
         if (!chatRes.ok) throw new Error("AI 生成失败");
 
         // Read SSE stream
-        const reader = chatRes.body!.getReader();
+        if (!chatRes.body) throw new Error("AI 返回了空响应");
+        const reader = chatRes.body.getReader();
         const decoder = new TextDecoder();
         let fullContent = "";
         let buffer = "";
@@ -110,13 +126,13 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
           }
         }
 
+        if (cancelledRef.current) return;
+
         // Extract code
         const { extractCode } = await import("@/lib/ai/prompts");
         const code = extractCode(fullContent);
         if (!code) throw new Error("未能提取有效的 Python 代码");
         setGeneratedCode(code);
-
-        if (cancelledRef.current) return;
 
         // Stage 4: Launch render
         advanceStage("launching");
@@ -130,6 +146,7 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
         const renderRes = await fetch("/api/render", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({ code, quality: "-ql", format: "mp4" }),
         });
 
@@ -141,30 +158,47 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
         if (cancelledRef.current) return;
 
         setVideoUrl(renderData.video_url);
+        setVideoError(false);
         setCardState("done");
       } catch (err) {
-        if (cancelledRef.current) return;
-        setError(err instanceof Error ? err.message : "未知错误");
+        if (cancelledRef.current || superseded) return;
+        const message = err instanceof Error ? err.message : "未知错误";
+        // Keep the visible error short — raw AI/renderer text can be huge.
+        setError(message.length > 240 ? message.slice(0, 240) + "…" : message);
         setCardState("failed");
       }
     };
 
     run();
-    return () => { cancelledRef.current = true; };
+    return () => {
+      cancelledRef.current = true;
+      abortRef.current?.abort();
+    };
   }, [retryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCancel = () => {
     cancelledRef.current = true;
+    abortRef.current?.abort();
     onRemove?.();
+  };
+
+  /** Shared step for retry paths: mark the card as busy with a fresh abort. */
+  const beginBusy = (stage: CardStage) => {
+    cancelledRef.current = false;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setCardState("generating");
+    setVideoError(false);
+    advanceStage(stage);
+    return controller;
   };
 
   // Auto-fix: send error + code to fix endpoint, then re-render
   const handleRetry = async () => {
     if (!generatedCode || !error) {
       // No code to fix — restart full pipeline
-      setCardState("generating");
-      setStage("understanding");
-      setStageIndex(0);
+      beginBusy("understanding");
       setError("");
       setVideoUrl(null);
       setRetryKey((k) => k + 1);
@@ -172,15 +206,18 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
     }
 
     // Show fix-in-progress state
-    setCardState("generating");
-    setStage("writing");
-    setStageIndex(2);
+    const controller = beginBusy("writing");
+    let superseded = false;
+    controller.signal.addEventListener("abort", () => {
+      superseded = true;
+    });
     setError("");
 
     try {
       const fixRes = await fetch("/api/chat/fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ code: generatedCode, error }),
       });
 
@@ -196,11 +233,13 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
       // Re-render with fixed code
       advanceStage("launching");
       await sleep(300);
+      if (cancelledRef.current) return;
       advanceStage("rendering");
 
       const renderRes = await fetch("/api/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ code: fixedCode, quality: "-ql", format: "mp4" }),
       });
 
@@ -209,10 +248,45 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
         throw new Error(renderData.error ?? "渲染失败");
       }
 
+      if (cancelledRef.current) return;
       setVideoUrl(renderData.video_url);
       setCardState("done");
     } catch (err2) {
-      setError(err2 instanceof Error ? err2.message : "修复失败");
+      if (cancelledRef.current || superseded) return;
+      const message = err2 instanceof Error ? err2.message : "修复失败";
+      setError(message.length > 240 ? message.slice(0, 240) + "…" : message);
+      setCardState("failed");
+    }
+  };
+
+  /** Re-render the already-generated code (video expired / quality retry). */
+  const handleReRender = async () => {
+    if (!generatedCode) return;
+    const controller = beginBusy("rendering");
+    let superseded = false;
+    controller.signal.addEventListener("abort", () => {
+      superseded = true;
+    });
+    setError("");
+    try {
+      const renderRes = await fetch("/api/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({ code: generatedCode, quality: "-ql", format: "mp4" }),
+      });
+      const renderData = await renderRes.json();
+      if (!renderRes.ok || renderData.error) {
+        throw new Error(renderData.error ?? "渲染失败");
+      }
+      if (cancelledRef.current) return;
+      setVideoUrl(renderData.video_url);
+      setVideoError(false);
+      setCardState("done");
+    } catch (err3) {
+      if (cancelledRef.current || superseded) return;
+      const message = err3 instanceof Error ? err3.message : "渲染失败";
+      setError(message.length > 240 ? message.slice(0, 240) + "…" : message);
       setCardState("failed");
     }
   };
@@ -232,8 +306,6 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
     if (v.paused) { v.play(); setIsPaused(false); }
     else { v.pause(); setIsPaused(true); }
   };
-
-  const sandboxHref = `/sandbox?prompt=${encodeURIComponent(prompt)}`;
 
   const currentStage = STAGES[stageIndex] ?? STAGES[0];
   const progressPct = cardState === "done" ? 100
@@ -310,6 +382,13 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
               {isPaused ? "播放" : "暂停"}
             </button>
             <button
+              onClick={() => void handleReRender()}
+              className="flex items-center gap-1 text-xs text-[#6c6a64] hover:text-[#141413] transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3 h-3" />
+              重新渲染
+            </button>
+            <button
               onClick={goToSandbox}
               className="flex items-center gap-1 text-xs text-[#cc785c] hover:text-[#a9583e] transition-colors font-medium cursor-pointer"
             >
@@ -317,6 +396,18 @@ export function AnimationCard({ prompt, wikiTitle, wikiSlug, onRemove }: Animati
               在沙箱中编辑
             </button>
           </div>
+
+          {/* Generated code — visible without leaving the page */}
+          {generatedCode && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-[#6c6a64] hover:text-[#141413] transition-colors select-none">
+                查看生成的 Manim 代码
+              </summary>
+              <pre className="mt-2 rounded-lg bg-[#f5f2ed] p-3 overflow-auto max-h-48 font-mono text-[11px] leading-relaxed text-[#3d3d3a]">
+                {generatedCode}
+              </pre>
+            </details>
+          )}
         </div>
       )}
 

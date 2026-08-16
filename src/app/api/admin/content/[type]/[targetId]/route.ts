@@ -44,7 +44,7 @@ export async function DELETE(
   const { error } = await admin.from(type).delete().eq("id", targetId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "删除失败，请重试" }, { status: 500 });
   }
 
   // Audit log (fire-and-forget)

@@ -196,9 +196,17 @@ async function failJob(
   reason: string,
   message: string,
   retryable: boolean,
+  expectedRunToken?: number,
 ): Promise<void> {
   try {
-    await deps.store.updateJob(jobId, { status: "failed", failureReason: reason });
+    const applied =
+      expectedRunToken === undefined
+        ? (await deps.store.updateJob(jobId, { status: "failed", failureReason: reason }), true)
+        : await deps.store.updateJobIfCurrent(jobId, expectedRunToken, {
+            status: "failed",
+            failureReason: reason,
+          });
+    if (!applied) return; // superseded — don't emit a stale failure event
   } catch (err) {
     console.error(`[generation] updateJob failed for ${jobId}:`, err);
   }
@@ -317,21 +325,18 @@ async function completeJob(
   signal: AbortSignal,
 ): Promise<void> {
   await checkpoint(jobId, deps, expectedRunToken, signal);
-  await deps.store.updateJob(jobId, { render: artifact, status: "completed" });
-  await checkpointCompletedRun(jobId, deps, expectedRunToken);
+  // Conditional write: if a cancel bumped the runToken between the checkpoint
+  // and this write, nothing is persisted and the pipeline backs off instead
+  // of overwriting the cancelled state with "completed".
+  const applied = await deps.store.updateJobIfCurrent(jobId, expectedRunToken, {
+    render: artifact,
+    status: "completed",
+  });
+  if (!applied) throw new JobSuperseded();
   await emitEvent(jobId, deps, {
     type: "job.completed",
     data: { versionId, render: artifact },
   });
-}
-
-async function checkpointCompletedRun(
-  jobId: string,
-  deps: GenerationDependencies,
-  expectedRunToken: number,
-): Promise<void> {
-  const job = await deps.store.getJobById(jobId);
-  if (!job || job.runToken !== expectedRunToken) throw new JobSuperseded();
 }
 
 // ─── Operation pipelines ────────────────────────────────────────
@@ -357,7 +362,7 @@ async function runGenerate(
 
   // 2. Retrieval of reference examples (quality-gated; empty is acceptable).
   await setPhase(jobId, deps, "retrieving");
-  const rawExamples = await retrieveExamples(prompt, 3);
+  const rawExamples = await retrieveExamples(prompt, 3, signal);
   await checkpoint(jobId, deps, expectedRunToken, signal);
   const examples = filterRetrievedExamples(
     rawExamples.map((row) => ({ ...row, similarity: row.similarity ?? 0 })),
@@ -424,6 +429,7 @@ async function runGenerate(
         "repair_limit",
         "自动验证与修复均未成功（最多 2 次）。请手动修改代码或重试。",
         true,
+        expectedRunToken,
       );
       return;
     }
@@ -463,7 +469,7 @@ async function runRenderOnly(
   const job = await checkpoint(jobId, deps, expectedRunToken, signal);
   const current = await resolveCurrentVersion(job, deps, currentCode);
   if (!current) {
-    await failJob(jobId, deps, "no_code", "没有可渲染的代码版本。", true);
+    await failJob(jobId, deps, "no_code", "没有可渲染的代码版本。", true, expectedRunToken);
     return;
   }
 
@@ -493,6 +499,7 @@ async function runRenderOnly(
       "validation_failed",
       "代码未能通过验证或渲染，请检查诊断信息。",
       true,
+      expectedRunToken,
     );
   }
 }
@@ -509,7 +516,7 @@ async function runManualRepair(
   const job = await checkpoint(jobId, deps, expectedRunToken, signal);
   const current = await resolveCurrentVersion(job, deps, currentCode);
   if (!current) {
-    await failJob(jobId, deps, "no_code", "没有可修复的代码版本。", true);
+    await failJob(jobId, deps, "no_code", "没有可修复的代码版本。", true, expectedRunToken);
     return;
   }
 
@@ -556,6 +563,7 @@ async function runManualRepair(
       "validation_failed",
       "修复后的代码仍未通过验证或渲染。",
       true,
+      expectedRunToken,
     );
   }
 }
@@ -620,6 +628,7 @@ async function runGenerationPipeline(
       "internal",
       err instanceof Error ? err.message : "内部错误",
       false,
+      expectedRunToken,
     );
   }
 }
@@ -708,6 +717,9 @@ export async function ensureGenerationStarted(
   const registry = getActiveJobs();
   const existing = registry.get(jobId);
   if (existing && existing.runToken === job.runToken) return;
+  // A different runToken means this job was cancelled/taken over — abort the
+  // stale pipeline's in-flight model/render call before replacing it.
+  existing?.controller.abort();
 
   const controller = new AbortController();
   const promise = runGenerationPipeline(jobId, deps, controller, job.runToken)

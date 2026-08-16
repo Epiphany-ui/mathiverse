@@ -802,6 +802,19 @@ async function main() {
 
   const force = process.argv.includes("--force");
 
+  // The vector store has no unique constraint — inserting on every run
+  // duplicates rows and pollutes retrieval.  Skip unless the operator
+  // explicitly asks for more rows with --force.
+  if (!force) {
+    const existing = await countExamples();
+    if (existing > 0) {
+      console.log(
+        `[seed-advanced] ${existing} examples already exist — skipping (use --force to insert anyway).`,
+      );
+      process.exit(0);
+    }
+  }
+
   console.log(`[seed-advanced] Inserting ${ADVANCED_EXAMPLES.length} advanced examples...`);
   let inserted = 0;
 

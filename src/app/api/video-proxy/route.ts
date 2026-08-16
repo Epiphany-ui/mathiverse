@@ -11,12 +11,24 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isLocalRendererUrl } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 const CONNECT_TIMEOUT_MS = 10_000;
 
 export async function GET(request: NextRequest) {
+  // Require login — the proxy reads renderer output and must not be an
+  // anonymous read gateway into the local renderer.
+  const supabase = await createClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Supabase 未配置" }, { status: 503 });
+  }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  }
+
   const url = request.nextUrl.searchParams.get("url");
   if (!url) {
     return NextResponse.json({ error: "缺少 url 参数" }, { status: 400 });
@@ -25,6 +37,21 @@ export async function GET(request: NextRequest) {
   if (!isLocalRendererUrl(url)) {
     return NextResponse.json(
       { error: "仅支持本地渲染器 URL (localhost:9876)" },
+      { status: 403 },
+    );
+  }
+
+  // Only published renderer output is proxied — never staging files
+  // (in-flight scene.py sources) or any other renderer endpoint.
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    return NextResponse.json({ error: "无效的 URL" }, { status: 400 });
+  }
+  if (!pathname.startsWith("/output/") || pathname.includes("/.staging")) {
+    return NextResponse.json(
+      { error: "仅支持渲染器输出文件" },
       { status: 403 },
     );
   }
@@ -44,9 +71,12 @@ export async function GET(request: NextRequest) {
 
     let res: Response;
     try {
+      // Never follow redirects — a 30x Location could point anywhere and
+      // would bypass the host whitelist above.
       res = await fetch(url, {
         headers: fetchHeaders,
         signal: connectController.signal,
+        redirect: "manual",
       });
     } finally {
       clearTimeout(connectTimer);

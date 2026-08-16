@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  Decoration,
+} from "@codemirror/view";
 import type { CodeChange } from "@/lib/ai/prompts";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { python } from "@codemirror/lang-python";
@@ -49,6 +55,13 @@ const mathiverseTheme = EditorView.theme(
       backgroundColor: "rgba(204, 120, 92, 0.15)",
       outline: "1px solid #cc785c",
     },
+    ".cm-error-line": {
+      backgroundColor: "rgba(204, 120, 92, 0.16)",
+      borderLeft: "2px solid #cc785c",
+    },
+    ".cm-diff-lines": {
+      backgroundColor: "rgba(121, 216, 199, 0.14)",
+    },
     ".cm-tooltip": {
       backgroundColor: "#252320",
       border: "1px solid rgba(204, 120, 92, 0.25)",
@@ -88,6 +101,47 @@ const pythonHighlightStyle = HighlightStyle.define([
   { tag: tags.standard(tags.typeName), color: "#e8a55a" },
 ]);
 
+/** Mark the error line from render/validation diagnostics. */
+const setErrorLineEffect = StateEffect.define<{ from: number; to: number } | null>();
+const errorLineField = StateField.define<{ from: number; to: number } | null>({
+  create: () => null,
+  update: (value, tr) => {
+    let next = value;
+    for (const effect of tr.effects) {
+      if (effect.is(setErrorLineEffect)) next = effect.value;
+    }
+    // Any edit invalidates the mark — the error refers to the old code.
+    if (tr.docChanged && next) next = null;
+    return next;
+  },
+  provide: (field) =>
+    EditorView.decorations.from(field, (value) =>
+      value
+        ? Decoration.set([Decoration.line({ class: "cm-error-line" }).range(value.from)])
+        : Decoration.none,
+    ),
+});
+
+/** Highlight the block that changed when comparing against a version. */
+const setDiffEffect = StateEffect.define<{ from: number; to: number } | null>();
+const diffField = StateField.define<{ from: number; to: number } | null>({
+  create: () => null,
+  update: (value, tr) => {
+    let next = value;
+    for (const effect of tr.effects) {
+      if (effect.is(setDiffEffect)) next = effect.value;
+    }
+    if (tr.docChanged && next) next = null;
+    return next;
+  },
+  provide: (field) =>
+    EditorView.decorations.from(field, (value) =>
+      value
+        ? Decoration.set([Decoration.mark({ class: "cm-diff-lines" }).range(value.from, value.to)])
+        : Decoration.none,
+    ),
+});
+
 interface CodeEditorProps {
   value: string;
   onChange?: (value: string) => void;
@@ -105,6 +159,12 @@ interface CodeEditorProps {
    * string avoids the re-render / racing-dispatch restart problem.
    */
   versionId?: string | null;
+  /** 1-based line to highlight as the source of the current error. */
+  errorLine?: number | null;
+  /** Bump to re-apply the highlight for the same line twice. */
+  errorLineNonce?: number;
+  /** 1-based inclusive line range to tint as "changed since last version". */
+  diffRange?: { start: number; end: number; nonce: number } | null;
 }
 
 export function CodeEditor({
@@ -116,9 +176,14 @@ export function CodeEditor({
   onChangesDone,
   externalUpdateMode = "paint",
   versionId,
+  errorLine,
+  errorLineNonce,
+  diffRange,
 }: CodeEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // Tracks whether the EditorView is still alive (view.destroyed is private).
+  const viewDestroyedRef = useRef(false);
   const typewriterRef = useRef<AbortController | null>(null);
   const typewritingRef = useRef(false);
   const canvasOverlayRef = useRef<HTMLDivElement>(null);
@@ -133,7 +198,9 @@ export function CodeEditor({
   // Stable ref for callbacks so typewriteCode identity doesn't change on every
   // render (which would re-trigger the useEffect and abort the animation).
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   const handleChange = useCallback((val: string) => {
     editorValueRef.current = val;
@@ -243,6 +310,8 @@ export function CodeEditor({
       python(),
       syntaxHighlighting(pythonHighlightStyle),
       mathiverseTheme,
+      errorLineField,
+      diffField,
       keymap.of([
         ...defaultKeymap,
         ...historyKeymap,
@@ -268,12 +337,14 @@ export function CodeEditor({
     });
 
     viewRef.current = view;
+    viewDestroyedRef.current = false;
 
     if (autoFocus && !readOnly) {
       view.focus();
     }
 
     return () => {
+      viewDestroyedRef.current = true;
       view.destroy();
       viewRef.current = null;
     };
@@ -293,7 +364,10 @@ export function CodeEditor({
     if (typewriterTargetRef.current === value) return;
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (externalUpdateMode === "immediate" || reduceMotion) {
+    // Large documents (e.g. rolling back to a long version) paint instantly —
+    // the typewriter would take minutes and feel like a hang.
+    const largeSync = value.length > 4_000 || currentDoc.length > 4_000;
+    if (externalUpdateMode === "immediate" || reduceMotion || largeSync) {
       typewriterRef.current?.abort();
       typewriterTargetRef.current = null;
       typewritingRef.current = true;
@@ -306,13 +380,85 @@ export function CodeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [versionId]);
 
-  // Incremental change application with canvas erase/write animation
+  // External code injected WITHOUT a versionId (fork prefill, localStorage
+  // restore, wiki mini-sandbox AI output) — replace the document directly.
+  // Editor-initiated changes are skipped because they already match.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || versionId || typewritingRef.current) return;
+    const currentDoc = view.state.doc.toString();
+    if (value === currentDoc) return;
+    typewriterRef.current?.abort();
+    view.dispatch({ changes: { from: 0, to: currentDoc.length, insert: value } });
+    editorValueRef.current = value;
+  }, [value, versionId]);
+
+  // Highlight the line that caused the latest render/validation failure.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || errorLineNonce === undefined) return;
+    if (!errorLine) {
+      view.dispatch({ effects: setErrorLineEffect.of(null) });
+      return;
+    }
+    const doc = view.state.doc;
+    const lineNo = Math.min(Math.max(1, errorLine), doc.lines);
+    const line = doc.line(lineNo);
+    view.dispatch({
+      effects: [
+        setErrorLineEffect.of({ from: line.from, to: line.to }),
+        EditorView.scrollIntoView(line.from, { y: "center" }),
+      ],
+      selection: { anchor: line.from },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorLineNonce]);
+
+  // Tint the block that changed relative to the version just rolled back to.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !diffRange) return;
+    const doc = view.state.doc;
+    const startLine = Math.min(Math.max(1, diffRange.start), doc.lines);
+    const endLine = Math.min(Math.max(1, diffRange.end), doc.lines);
+    const from = doc.line(startLine).from;
+    const to = doc.line(endLine).to;
+    view.dispatch({
+      effects: [
+        setDiffEffect.of({ from, to }),
+        EditorView.scrollIntoView(from, { y: "center" }),
+      ],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diffRange?.nonce]);
+
+  // Incremental change application with canvas erase/write animation.
+  // Abortable: a newer batch, unmount, or prop reset cancels the animation
+  // mid-flight so stale dispatches never hit a destroyed editor view.
+  const incrementalAbortRef = useRef<AbortController | null>(null);
+  const appliedChangesRef = useRef<CodeChange[] | null>(null);
+
   const applyIncrementalChanges = useCallback(
     async (view: EditorView, changes: CodeChange[]) => {
+      incrementalAbortRef.current?.abort();
+      const controller = new AbortController();
+      incrementalAbortRef.current = controller;
+      const signal = controller.signal;
+
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, ms);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+
       const overlay = canvasOverlayRef.current;
 
       // Process changes in order
       for (let i = 0; i < changes.length; i++) {
+        if (signal.aborted || viewDestroyedRef.current) return;
         const ch = changes[i];
         // Read doc fresh each iteration — it changes after each dispatch
         const doc = view.state.doc;
@@ -329,7 +475,8 @@ export function CodeEditor({
           overlay.style.boxShadow =
             "inset 0 0 120px rgba(220, 80, 60, 0.4), inset 0 0 40px rgba(220, 80, 60, 0.2)";
         }
-        await new Promise((r) => setTimeout(r, 200));
+        await sleep(200);
+        if (signal.aborted || viewDestroyedRef.current) return;
 
         // Phase 2: Replace text
         view.dispatch({
@@ -345,7 +492,8 @@ export function CodeEditor({
           overlay.style.boxShadow =
             "inset 0 0 120px rgba(93, 184, 166, 0.3), inset 0 0 40px rgba(93, 184, 166, 0.15)";
         }
-        await new Promise((r) => setTimeout(r, 150));
+        await sleep(150);
+        if (signal.aborted || viewDestroyedRef.current) return;
 
         // Fade out
         if (overlay) {
@@ -357,9 +505,11 @@ export function CodeEditor({
 
         // Stagger between multiple changes
         if (i < changes.length - 1) {
-          await new Promise((r) => setTimeout(r, 100));
+          await sleep(100);
         }
       }
+
+      if (signal.aborted || viewDestroyedRef.current) return;
 
       // Scroll to first changed line
       const finalDoc = view.state.doc;
@@ -381,8 +531,15 @@ export function CodeEditor({
     const view = viewRef.current;
     if (!view || !applyChanges?.length) return;
 
-    // Use a ref to prevent duplicate processing
-    applyIncrementalChanges(view, applyChanges);
+    // Skip a batch we already processed (StrictMode double-run or an
+    // identical array re-created by the parent).
+    if (appliedChangesRef.current === applyChanges) return;
+    appliedChangesRef.current = applyChanges;
+    void applyIncrementalChanges(view, applyChanges);
+
+    return () => {
+      incrementalAbortRef.current?.abort();
+    };
   }, [applyChanges, applyIncrementalChanges]);
 
   return (

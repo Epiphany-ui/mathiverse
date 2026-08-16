@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { GlassCard } from "@/components/shared/glass-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,34 +10,40 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
 function UpdatePasswordInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  // Supabase redirects with ?code=... — exchange the code for a session.
+  // A missing code is surfaced immediately; the effect below exchanges it.
+  const code = searchParams.get("code");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(code ? "" : "无效的重置链接，请重新请求密码重置。");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [codeReady, setCodeReady] = useState(false);
+  // createClient() is deterministic (env-based), so evaluating it during
+  // render is safe and keeps the effect free of synchronous setState.
+  const [supabaseReady] = useState(() => createClient() !== null);
+  // One-time auth codes must only be exchanged once — StrictMode runs effects
+  // twice in development, and a second exchange would fail and show a bogus
+  // "link expired" error even though the session was established.
+  const exchangedCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Supabase redirects with `?code=...` — exchange the code for a session
-    const code = searchParams.get("code");
-    if (!code) {
-      setError("无效的重置链接，请重新请求密码重置。");
-      return;
-    }
+    if (!code || !supabaseReady) return;
+    if (exchangedCodeRef.current === code) return;
+    exchangedCodeRef.current = code;
+    let cancelled = false;
     const supabase = createClient();
-    if (!supabase) {
-      setError("Supabase 未配置");
-      return;
-    }
-    supabase.auth.exchangeCodeForSession(code).then(({ error: exchangeErr }) => {
-      if (exchangeErr) {
+    if (!supabase) return;
+    supabase.auth.exchangeCodeForSession(code).then(({ data, error: exchangeErr }) => {
+      if (cancelled) return;
+      if (exchangeErr || !data.user || !data.session) {
         setError("重置链接已过期或无效，请重新请求密码重置。");
       } else {
         setCodeReady(true);
       }
     });
-  }, [searchParams]);
+    return () => { cancelled = true; };
+  }, [code, supabaseReady]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +128,11 @@ function UpdatePasswordInner() {
 
         {!codeReady && !error && (
           <div className="flex justify-center py-4">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            {supabaseReady ? (
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <p className="text-sm text-muted-foreground">Supabase 未配置</p>
+            )}
           </div>
         )}
 

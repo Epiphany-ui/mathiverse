@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 
 ALLOWED_IMPORT_ROOTS = frozenset({"manim", "numpy", "math", "random", "statistics"})
-RENDERER_CACHE_SCHEMA_VERSION = "1"
+RENDERER_CACHE_SCHEMA_VERSION = "2"
 BLOCKED_ROOTS = frozenset(
     {
         "os",
@@ -32,8 +32,42 @@ BLOCKED_ROOTS = frozenset(
         "exec",
         "compile",
         "__import__",
+        # Indirect access to the blocked builtins above must be blocked too:
+        # getattr(__builtins__, "__import__")("os").system("id") and friends.
+        "getattr",
+        "setattr",
+        "delattr",
+        "globals",
+        "locals",
+        "vars",
+        "input",
+        "breakpoint",
+        "__getattribute__",
     }
 )
+
+# Attributes that unlock object internals used by the classic sandbox escape
+# chains ((1).__class__.__mro__..., func.__globals__ ...).  Scenes never need
+# them on user-visible objects.
+BLOCKED_ATTRIBUTES = frozenset(
+    {
+        "__class__",
+        "__mro__",
+        "__subclasses__",
+        "__bases__",
+        "__globals__",
+        "__builtins__",
+        "__builtin__",
+        "__code__",
+        "__closure__",
+        "__func__",
+        "__self__",
+        "__wrapped__",
+        "__getattribute__",
+    }
+)
+
+BLOCKED_NAMES = frozenset({"__builtins__", "__builtin__"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +85,15 @@ class ValidationResult:
     issues: list[ValidationIssue] = field(default_factory=list)
 
 
+def _numpy_version() -> str | None:
+    try:
+        import numpy  # noqa: PLC0415
+
+        return numpy.__version__
+    except Exception:  # pragma: no cover - numpy is a renderer dependency
+        return None
+
+
 def compute_render_key(
     code: str,
     quality: str,
@@ -66,6 +109,7 @@ def compute_render_key(
             "quality": quality,
             "format": fmt,
             "manim_version": manim_version,
+            "numpy_version": _numpy_version(),
             "python": f"{sys.version_info.major}.{sys.version_info.minor}",
         },
         ensure_ascii=False,
@@ -136,6 +180,16 @@ def validate_code(code: str) -> ValidationResult:
                 )
             ],
         )
+    except (RecursionError, MemoryError, ValueError) as exc:
+        return ValidationResult(
+            valid=False,
+            issues=[
+                ValidationIssue(
+                    code="syntax",
+                    message=f"代码无法解析：{type(exc).__name__}",
+                )
+            ],
+        )
 
     issues: list[ValidationIssue] = []
     scene_name: str | None = None
@@ -157,10 +211,19 @@ def validate_code(code: str) -> ValidationResult:
                 )
         elif isinstance(node, ast.Call):
             root = _root_name(node.func)
-            if root in BLOCKED_ROOTS:
+            base = _base_name(node.func)
+            if root in BLOCKED_ROOTS or base in BLOCKED_ROOTS:
                 issues.append(
-                    _issue("security", f"Call to '{root}' is not allowed.", node)
+                    _issue("security", f"Call to '{base or root}' is not allowed.", node)
                 )
+        elif isinstance(node, ast.Attribute) and node.attr in BLOCKED_ATTRIBUTES:
+            issues.append(
+                _issue("security", f"Attribute access '{node.attr}' is not allowed.", node)
+            )
+        elif isinstance(node, ast.Name) and node.id in BLOCKED_NAMES:
+            issues.append(
+                _issue("security", f"Reference to '{node.id}' is not allowed.", node)
+            )
         elif isinstance(node, ast.ClassDef) and scene_name is None:
             if any((_base_name(base) or "").endswith("Scene") for base in node.bases):
                 scene_name = node.name

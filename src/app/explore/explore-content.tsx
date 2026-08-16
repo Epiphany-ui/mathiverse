@@ -12,11 +12,20 @@ import { createClient } from "@/lib/supabase/client";
 import { buildFeedItems } from "@/lib/db/queries";
 import type { FeedSort, FeedItem } from "@/types";
 
-const POPULAR_TAGS = [
-  "傅里叶变换", "梯度下降", "排序算法", "欧拉公式",
-  "概率分布", "椭圆曲线", "线性代数", "信号处理",
-  "机器学习", "几何",
-];
+/** Aggregate the most-used tags across the loaded feed — real data instead
+ *  of a hardcoded list that goes stale. */
+function derivePopularTags(items: FeedItem[], limit = 10): string[] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    for (const tag of item.tags) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([tag]) => tag);
+}
 
 export function ExploreContent() {
   const searchParams = useSearchParams();
@@ -26,6 +35,7 @@ export function ExploreContent() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [popularTags, setPopularTags] = useState<string[]>([]);
 
   // Check auth state once on mount
   useEffect(() => {
@@ -53,6 +63,7 @@ export function ExploreContent() {
     buildFeedItems(supabase, sort)
       .then((all) => {
         if (cancelled) return;
+      setPopularTags(derivePopularTags(all));
       if (activeTag) {
         const filtered = all
           .filter((item) =>
@@ -143,17 +154,22 @@ export function ExploreContent() {
             热门标签
           </h2>
           <div className="flex flex-wrap gap-2">
-            {POPULAR_TAGS.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setActiveTag(activeTag === tag ? "" : tag)}
-              >
+            {popularTags.length > 0 ? (
+              popularTags.map((tag) => (
                 <TagBadge
+                  key={tag}
                   tag={tag}
                   active={activeTag === tag}
+                  onSelect={() => setActiveTag(activeTag === tag ? "" : tag)}
                 />
-              </button>
-            ))}
+              ))
+            ) : (
+              !loading && (
+                <p className="text-xs text-muted-foreground/60">
+                  还没有作品发布，标签将随社区内容自动出现
+                </p>
+              )
+            )}
           </div>
         </section>
 

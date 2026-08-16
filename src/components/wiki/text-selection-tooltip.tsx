@@ -82,6 +82,8 @@ export function TextSelectionTooltip({
     });
   }, [containerRef]);
 
+  const hideTooltip = useCallback(() => setVisible(false), []);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -89,15 +91,15 @@ export function TextSelectionTooltip({
     container.addEventListener("mouseup", handleSelection);
     container.addEventListener("keyup", handleSelection);
     document.addEventListener("selectionchange", handleSelection);
-    window.addEventListener("scroll", () => setVisible(false), { passive: true });
+    window.addEventListener("scroll", hideTooltip, { passive: true });
 
     return () => {
       container.removeEventListener("mouseup", handleSelection);
       container.removeEventListener("keyup", handleSelection);
       document.removeEventListener("selectionchange", handleSelection);
-      window.removeEventListener("scroll", () => setVisible(false));
+      window.removeEventListener("scroll", hideTooltip);
     };
-  }, [containerRef, handleSelection]);
+  }, [containerRef, handleSelection, hideTooltip]);
 
   const handleClick = () => {
     setVisible(false);

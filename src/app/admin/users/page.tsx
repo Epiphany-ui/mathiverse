@@ -1,7 +1,7 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+ 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { BatchBar, type BatchAction } from "@/components/admin/batch-bar";
 
@@ -57,6 +57,40 @@ export default function AdminUsersPage() {
     { label: "解封所选", action: "unban_users" },
   ];
 
+  // Latest search term for the page-driven effect, and a sequence counter
+  // so a stale response can never overwrite a newer one.
+  const searchRef = useRef("");
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
+  const loadSeqRef = useRef(0);
+
+  const loadUsers = useCallback(async (targetPage: number, targetSearch: string) => {
+    const seq = ++loadSeqRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ page: String(targetPage) });
+      if (targetSearch.trim()) params.set("search", targetSearch.trim());
+      const res = await fetch(`/api/admin/users?${params}`);
+      const data = await res.json();
+      if (seq !== loadSeqRef.current) return; // stale response
+      if (!res.ok) throw new Error(data.error ?? "加载失败");
+      setUsers(data.users ?? []);
+      setTotal(data.total ?? 0);
+      setCurrentUserId(data.currentUserId ?? null);
+    } catch (err) {
+      if (seq !== loadSeqRef.current) return;
+      setError(err instanceof Error ? err.message : "未知错误");
+    } finally {
+      if (seq === loadSeqRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUsers(page, searchRef.current);
+  }, [page, loadUsers]);
+
   const handleBatch = useCallback(async (a: BatchAction) => {
     setBatchBusy(true);
     try {
@@ -72,34 +106,13 @@ export default function AdminUsersPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       clearSelection();
-      loadUsers();
+      void loadUsers(page, searchRef.current);
     } catch (err) {
       setError(err instanceof Error ? err.message : "批量操作失败");
     } finally {
       setBatchBusy(false);
     }
-  }, [selected]);
-
-  async function loadUsers() {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({ page: String(page) });
-      if (search.trim()) params.set("search", search.trim());
-      const res = await fetch(`/api/admin/users?${params}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "加载失败");
-      setUsers(data.users ?? []);
-      setTotal(data.total ?? 0);
-      setCurrentUserId(data.currentUserId ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "未知错误");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { loadUsers(); }, [page]);
+  }, [selected, loadUsers, page]);
 
   async function toggleRole(user: AdminUser) {
     const newRole = user.role === "admin" ? "user" : "admin";
@@ -136,10 +149,10 @@ export default function AdminUsersPage() {
       {error && (
         <div className="p-3 rounded-lg border border-[#ff603b]/30 bg-[#ff603b]/5 text-sm text-[#ff603b]">
           {error}
-          <button onClick={loadUsers} className="ml-3 underline">重试</button>
+          <button onClick={() => void loadUsers(page, search)} className="ml-3 underline">重试</button>
         </div>
       )}
-      <form onSubmit={(e) => { e.preventDefault(); setPage(1); loadUsers(); }} className="flex gap-2">
+      <form onSubmit={(e) => { e.preventDefault(); if (page === 1) void loadUsers(1, search); else setPage(1); }} className="flex gap-2">
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索用户名或昵称…" className="flex-1 px-3 py-2 border border-[#e6dfd8] rounded-lg text-sm bg-white" />
         <button type="submit" className="px-4 py-2 bg-[#141413] text-white text-sm rounded-lg">搜索</button>
       </form>

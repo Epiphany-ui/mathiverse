@@ -28,6 +28,13 @@ export async function GET() {
     admin.from("comments").select("*", { count: "exact", head: true }),
   ]);
 
+  // A failed count query must not silently read as 0.
+  const failure = [profiles, vizs, articles, wikis, comments].find((r) => r.error);
+  if (failure?.error) {
+    console.error("Failed to load admin stats:", failure.error.message);
+    return NextResponse.json({ error: "统计数据加载失败" }, { status: 500 });
+  }
+
   return NextResponse.json({
     users: profiles.count ?? 0,
     visualizations: vizs.count ?? 0,

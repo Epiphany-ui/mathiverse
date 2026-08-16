@@ -57,6 +57,14 @@ class ${toClassName(wikiTitle)}(Scene):
     onChangesApplied: (changes) => setPendingChanges(changes),
   });
 
+  // Latest values for the one-shot auto-send effect below.
+  const codeRef = useRef(code);
+  const sendMessageRef = useRef(sendMessage);
+  useEffect(() => {
+    codeRef.current = code;
+    sendMessageRef.current = sendMessage;
+  }, [code, sendMessage]);
+
   const resetAndClose = useCallback(() => {
     abortRef.current?.abort();
     setRenderStatus("idle");
@@ -68,16 +76,20 @@ class ${toClassName(wikiTitle)}(Scene):
     onClose();
   }, [clearMessages, onClose]);
 
-  // Auto-send prompt on open
+  // Auto-send prompt on open — exactly once per prompt (per open session).
+  // Depending on sendMessage/code would re-fire after every message/render.
+  const autoSentRef = useRef<string | null>(null);
   useEffect(() => {
     if (!open || !initialPrompt) return;
+    if (autoSentRef.current === initialPrompt) return;
+    autoSentRef.current = initialPrompt;
 
     const timer = setTimeout(() => {
-      sendMessage(initialPrompt, code, false);
+      sendMessageRef.current(initialPrompt, codeRef.current, false);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [open, initialPrompt, code, sendMessage]);
+  }, [open, initialPrompt]);
 
   // Lock body scroll when open
   useEffect(() => {

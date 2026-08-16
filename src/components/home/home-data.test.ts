@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-// @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
 import type { FeedItem } from "../../types/index.ts";
 // @ts-expect-error TS5097: Node's TypeScript test runner requires explicit extensions.
 import { galleryMediaReducer } from "./gallery-media-state.ts";

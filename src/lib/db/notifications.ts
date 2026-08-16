@@ -74,15 +74,18 @@ export async function getUnreadCount(
   return count;
 }
 
-/** Mark a notification as read */
+/** Mark a notification as read.  Scoped to the owner as defense in depth
+ *  (RLS already restricts updates to the current user). */
 export async function markAsRead(
   client: any,
+  userId: string,
   notificationId: string,
 ): Promise<void> {
   await client
     .from("notifications")
     .update({ is_read: true })
-    .eq("id", notificationId);
+    .eq("id", notificationId)
+    .eq("user_id", userId);
 }
 
 /** Mark all notifications as read for a user */

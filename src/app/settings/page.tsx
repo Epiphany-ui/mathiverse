@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Settings, User, Bell, Shield, Check, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { sanitizeWebsiteUrl } from "@/lib/utils";
 
 export default function SettingsPage() {
   const [displayName, setDisplayName] = useState("");
@@ -98,7 +99,7 @@ export default function SettingsPage() {
       .update({
         display_name: displayName,
         bio,
-        website,
+        website: sanitizeWebsiteUrl(website),
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id);
@@ -179,9 +180,10 @@ export default function SettingsPage() {
 
                   setUploading(true);
                   setError("");
+                  let previewUrl: string | null = null;
                   try {
                     // Optimistic preview
-                    const previewUrl = URL.createObjectURL(file);
+                    previewUrl = URL.createObjectURL(file);
                     setAvatarUrl(previewUrl);
 
                     const form = new FormData();
@@ -218,6 +220,9 @@ export default function SettingsPage() {
                     setError("上传失败，请重试");
                   } finally {
                     setUploading(false);
+                    // Release the optimistic preview blob — the uploaded URL
+                    // (or the re-fetched server URL) is now the source.
+                    if (previewUrl) URL.revokeObjectURL(previewUrl);
                     // Clear the file input so the same file can be re-selected
                     if (fileInputRef.current) fileInputRef.current.value = "";
                   }
@@ -482,7 +487,7 @@ export default function SettingsPage() {
                   fetch("/api/account", { method: "DELETE" })
                     .then((res) => {
                       if (res.ok) window.location.href = "/";
-                      else return res.json().then((d: any) => { throw new Error(d.error ?? "删除失败"); });
+                      else return res.json().then((d: { error?: unknown }) => { throw new Error(typeof d.error === "string" ? d.error : "删除失败"); });
                     })
                     .catch((err) => {
                       setError(err instanceof Error ? err.message : "网络错误，请重试");

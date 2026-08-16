@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { GenerativeThumbnail } from "@/components/content/generative-thumbnail";
-import { InlineMath } from "@/components/content/inline-math";
+import { ContentThumbnail } from "@/components/content/content-thumbnail";
+import { MathText } from "@/components/content/math-text";
 import type { FeedItem } from "@/types";
 import type { EditorialSlots } from "./home-data";
 import styles from "./home-gallery.module.css";
@@ -16,14 +16,22 @@ function EditorialItem({
   item: FeedItem;
   variant: "lead" | "story" | "supporting";
 }) {
+  // Only show real media (poster/cover/video).  Without this guard the
+  // generative art fallback would stand in for a "thumbnail" and make real
+  // content look like mock data.
+  const hasMedia = Boolean(item.posterUrl || item.coverUrl || item.videoUrl);
   return (
     <article className={styles[`${variant}Item`]}>
       <Link className={styles.editorialLink} href={itemHref(item)}>
-        {variant !== "story" && (
+        {variant !== "story" && hasMedia && (
           <div className={styles.editorialVisual}>
-            <GenerativeThumbnail
+            <ContentThumbnail
+              posterUrl={item.posterUrl}
+              coverUrl={item.coverUrl}
+              videoUrl={item.videoUrl}
               tags={item.tags}
               className={styles.editorialArtwork}
+              playBadge={item.type === "visualization"}
             />
           </div>
         )}
@@ -32,11 +40,11 @@ function EditorialItem({
             {item.type === "visualization" ? "VISUAL STUDY" : "ESSAY"}
           </span>
           <h3>
-            <InlineMath text={item.title} />
+            <MathText text={item.title} />
           </h3>
           {item.description && (
             <p>
-              <InlineMath text={item.description} />
+              <MathText text={item.description} />
             </p>
           )}
           <span className={styles.editorialAuthor}>{item.author.displayName}</span>

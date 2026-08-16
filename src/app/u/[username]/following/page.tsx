@@ -26,7 +26,21 @@ export default async function FollowingPage({ params }: Props) {
     .eq("follower_id", profile.id)
     .order("created_at", { ascending: false });
 
-  const following = (follows ?? []).map((f: any) => f.profiles).filter(Boolean);
+  type FollowingRow = {
+    id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  };
+
+  // PostgREST embeds a to-one FK as a single object; the untyped client
+  // surfaces it as an array, so normalize both shapes defensively.
+  const following = (follows ?? [])
+    .map((f) => {
+      const profiles = Array.isArray(f.profiles) ? f.profiles : null;
+      return profiles?.[0] as FollowingRow | undefined;
+    })
+    .filter((p): p is FollowingRow => Boolean(p));
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -51,7 +65,7 @@ export default async function FollowingPage({ params }: Props) {
           </GlassCard>
         ) : (
           <div className="space-y-2">
-            {following.map((f: any) => (
+            {following.map((f) => (
               <Link key={f.id} href={`/u/${f.username}`}>
                 <GlassCard className="p-4 flex items-center gap-3 hover:border-[#cc785c]/30" hover>
                   <Avatar className="w-10 h-10">

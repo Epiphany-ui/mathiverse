@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Sparkles,
   Send,
   Loader2,
   AlertCircle,
+  Check,
 } from "lucide-react";
 
 interface PublishDialogProps {
@@ -32,10 +34,24 @@ export function PublishDialog({
   const [publishing, setPublishing] = useState(false);
   const [generatingMeta, setGeneratingMeta] = useState(false);
   const [error, setError] = useState("");
+  const [publishedId, setPublishedId] = useState<string | null>(null);
 
-  // Auto-generate metadata with AI when dialog opens
+  // Auto-generate metadata with AI — once per dialog opening.  Regenerating
+  // on every code change while the dialog is open would overwrite fields the
+  // user is editing, so the latest code is read via ref at open time.
+  const codeRef = useRef(code);
   useEffect(() => {
-    if (!open) return;
+    codeRef.current = code;
+  }, [code]);
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
 
     let cancelled = false;
     queueMicrotask(() => {
@@ -44,10 +60,11 @@ export function PublishDialog({
       setError("");
     });
 
+    const latestCode = codeRef.current;
     const generate = async () => {
       try {
         const { generateMetadata } = await import("@/lib/ai/prompts");
-        const meta = await generateMetadata("", code);
+        const meta = await generateMetadata("", latestCode);
 
         if (!cancelled) {
           setTitle(meta.title);
@@ -58,7 +75,7 @@ export function PublishDialog({
         // Graceful fallback — user fills manually
         if (!cancelled) {
           // Extract class name as default title
-          const classMatch = code.match(/class\s+(\w+)\s*\(/);
+          const classMatch = latestCode.match(/class\s+(\w+)\s*\(/);
           if (classMatch) {
             setTitle(classMatch[1]);
           }
@@ -72,7 +89,7 @@ export function PublishDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, code]);
+  }, [open]);
 
   const handlePublish = async () => {
     if (!title.trim()) {
@@ -106,7 +123,9 @@ export function PublishDialog({
         throw new Error(data.error ?? "发布失败");
       }
 
-      window.location.href = `/v/${data.id}`;
+      // Stay in the studio — offer both "view" and "keep editing" instead of
+      // yanking the user to the detail page.
+      setPublishedId(data.id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "发布失败");
       setPublishing(false);
@@ -114,6 +133,39 @@ export function PublishDialog({
   };
 
   if (!open) return null;
+
+  // Published successfully — offer both destinations.
+  if (publishedId) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="bg-background border border-border rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl space-y-4 text-center">
+          <div className="w-12 h-12 rounded-full bg-green-500/15 flex items-center justify-center mx-auto">
+            <Check className="w-6 h-6 text-green-500" />
+          </div>
+          <h2 className="text-lg font-semibold">发布成功！</h2>
+          <p className="text-sm text-muted-foreground">
+            作品已进入社区画廊，其他用户可以浏览、点赞和 Fork 它。
+          </p>
+          <div className="flex justify-center gap-3 pt-2">
+            <Link href={`/v/${publishedId}`} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#cc785c] hover:bg-[#a9583e] text-white text-sm">
+              查看作品
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setPublishedId(null);
+                setPublishing(false);
+                onClose();
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-border text-sm hover:bg-white/5"
+            >
+              回到沙箱继续编辑
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">

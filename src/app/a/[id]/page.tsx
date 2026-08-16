@@ -5,6 +5,7 @@ import { BookmarkButton } from "@/components/shared/bookmark-button";
 import { ShareButton } from "@/components/shared/share-button";
 import { TagBadge } from "@/components/content/tag-badge";
 import { CommentList } from "@/components/community/comment-list";
+import { MathText } from "@/components/content/math-text";
 import { ScrollReveal } from "@/components/shared/scroll-reveal";
 import { GlassCard } from "@/components/shared/glass-card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -101,7 +102,7 @@ export default async function ArticlePage({
                 文章
               </span>
               <h1 className="font-[family-name:var(--font-cormorant)] text-4xl font-normal tracking-[-0.5px] text-[#141413] max-w-2xl leading-tight">
-                {article.title}
+                <MathText text={article.title} />
               </h1>
               <div className="flex items-center justify-center gap-4 mt-4 text-sm text-[#6c6a64] font-light">
                 <span className="flex items-center gap-1">

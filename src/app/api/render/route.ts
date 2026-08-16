@@ -36,12 +36,20 @@ export async function POST(request: NextRequest) {
       return jsonResponse({ error: "请先登录后再渲染动画" }, 401);
     }
 
-    const body = (await request.json()) as {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse({ error: "无效的 JSON" }, 400);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return jsonResponse({ error: "无效的请求体" }, 400);
+    }
+    const { code, quality = "-ql", format = "mp4" } = body as {
       code?: unknown;
       quality?: unknown;
       format?: unknown;
     };
-    const { code, quality = "-ql", format = "mp4" } = body;
 
     if (!code || typeof code !== "string") {
       return jsonResponse(
@@ -81,7 +89,6 @@ export async function POST(request: NextRequest) {
       {
         error:
           "本地渲染器未启动。请确保 Tauri 渲染器正在运行 (localhost:9876)。",
-        details: error instanceof Error ? error.message : "连接失败",
       },
       503,
     );
@@ -89,7 +96,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/render — health check
+ * GET /api/render — health check (boolean only: no renderer details leak).
  */
 export async function GET() {
   try {
@@ -97,8 +104,7 @@ export async function GET() {
       signal: AbortSignal.timeout(2000),
     });
     if (res.ok) {
-      const data = await res.json();
-      return jsonResponse({ connected: true, ...data });
+      return jsonResponse({ connected: true });
     }
   } catch {
     // renderer not reachable

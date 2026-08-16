@@ -9,6 +9,7 @@ import {
   galleryMediaReducer,
 } from "./gallery-media-state";
 import { MathematicalFallback } from "./mathematical-fallback";
+import { MathText } from "@/components/content/math-text";
 import styles from "./home-gallery.module.css";
 
 const AUTOPLAY_INTERVAL = 8000; // 8s per slide
@@ -162,9 +163,9 @@ export function GalleryHero({
           NOW SHOWING / {String(currentIndex).padStart(2, "0")}
         </p>
         <h1 id="gallery-title" className={styles.heroTitle}>
-          {title}
+          <MathText text={title} />
         </h1>
-        <p className={styles.heroDescription}>{description}</p>
+        <p className={styles.heroDescription}><MathText text={description} /></p>
         <div className={styles.heroActions}>
           {feature ? (
             <Link className={styles.heroPrimary} href={href}>

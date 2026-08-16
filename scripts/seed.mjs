@@ -288,6 +288,8 @@ class CLTVisualization(Scene):
   ];
 
   for (const v of visualizations) {
+    // No fabricated counters — likes/comments/forks/views are maintained by
+    // the database triggers from the real interaction rows inserted below.
     const { error } = await supabase.from("visualizations").upsert({
       id: v.id,
       title: v.title,
@@ -296,10 +298,6 @@ class CLTVisualization(Scene):
       source_code: v.sourceCode,
       duration: v.duration,
       author_id: profileIds[v.authorUsername],
-      likes_count: v.likesCount,
-      comments_count: v.commentsCount,
-      forks_count: v.forksCount,
-      views_count: v.viewsCount,
       is_published: true,
       created_at: v.createdAt,
       updated_at: v.createdAt,
@@ -407,6 +405,7 @@ $$\\theta_{t+1} = \\theta_t - \\eta \\nabla L(\\theta_t)$$
   ];
 
   for (const a of articles) {
+    // Counters come from the database triggers, not from made-up numbers.
     const { error } = await supabase.from("articles").upsert({
       id: a.id,
       title: a.title,
@@ -414,10 +413,6 @@ $$\\theta_{t+1} = \\theta_t - \\eta \\nabla L(\\theta_t)$$
       embedded_viz: a.embeddedViz,
       tags: a.tags,
       author_id: profileIds[a.authorUsername],
-      likes_count: a.likesCount,
-      comments_count: a.commentsCount,
-      collections_count: a.collectionsCount,
-      views_count: a.viewsCount,
       is_published: true,
       created_at: a.createdAt,
       updated_at: a.createdAt,
@@ -444,6 +439,7 @@ $$\\theta_{t+1} = \\theta_t - \\eta \\nabla L(\\theta_t)$$
   ];
 
   for (const c of comments) {
+    // Comment like counts are trigger-maintained as well.
     const { error } = await supabase.from("comments").upsert({
       id: c.id,
       body: c.body,
@@ -451,7 +447,6 @@ $$\\theta_{t+1} = \\theta_t - \\eta \\nabla L(\\theta_t)$$
       target_type: c.targetType,
       target_id: c.targetId,
       parent_id: c.parentId,
-      likes_count: c.likesCount,
       created_at: c.createdAt,
       updated_at: c.createdAt,
     }, { onConflict: "id" });

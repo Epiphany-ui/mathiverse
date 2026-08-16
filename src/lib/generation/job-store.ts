@@ -63,6 +63,16 @@ export interface GenerationJobStore {
     >,
   ): Promise<void>;
 
+  /** Apply a patch only when the job's runToken still matches.  Returns
+   *  false (and writes nothing) when the job was superseded — terminal
+   *  writes use this so a cancel can never be overwritten by a finishing
+   *  pipeline. */
+  updateJobIfCurrent(
+    jobId: string,
+    expectedRunToken: number,
+    patch: Parameters<GenerationJobStore["updateJob"]>[1],
+  ): Promise<boolean>;
+
   saveVersion(
     jobId: string,
     version: Omit<GenerationVersion, "id" | "sequence" | "createdAt">,

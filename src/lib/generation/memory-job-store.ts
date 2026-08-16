@@ -131,6 +131,17 @@ export class MemoryGenerationJobStore implements GenerationJobStore {
     Object.assign(job, patch, { updatedAt: new Date().toISOString() });
   }
 
+  async updateJobIfCurrent(
+    jobId: string,
+    expectedRunToken: number,
+    patch: Parameters<GenerationJobStore["updateJob"]>[1],
+  ): Promise<boolean> {
+    const job = this.jobs.get(jobId);
+    if (!job || job.runToken !== expectedRunToken) return false;
+    Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+    return true;
+  }
+
   async saveVersion(
     jobId: string,
     version: Omit<GenerationVersion, "id" | "sequence" | "createdAt">,

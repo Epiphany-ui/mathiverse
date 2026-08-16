@@ -27,7 +27,7 @@ function hashTag(tag: string): number {
 function paletteForTags(tags: string[]) {
   const mapping: Record<string, keyof typeof PALETTES> = {
     "微积分": "calculus", "导数": "calculus", "积分": "calculus", "极限": "calculus",
-    "几何": "geometry", "图形": "geometry", "拓扑": "topology",
+    "几何": "geometry", "图形": "geometry", "拓扑": "geometry",
     "代数": "algebra", "线性代数": "algebra", "矩阵": "algebra", "椭圆曲线": "algebra",
     "概率": "probability", "统计": "probability", "正态分布": "probability", "分布": "probability",
     "傅里叶": "analysis", "信号处理": "analysis", "级数": "analysis",
@@ -35,7 +35,10 @@ function paletteForTags(tags: string[]) {
   };
   for (const tag of tags) {
     for (const [keyword, palette] of Object.entries(mapping)) {
-      if (tag.includes(keyword)) return PALETTES[palette];
+      if (tag.includes(keyword)) {
+        // Defensive fallback — an unknown key must never crash the feed.
+        return PALETTES[palette] ?? PALETTES.default;
+      }
     }
   }
   return PALETTES.default;

@@ -7,6 +7,8 @@ interface TagBadgeProps {
   clickable?: boolean;
   active?: boolean;
   className?: string;
+  /** In-page selection handler — renders a real button instead of a Link. */
+  onSelect?: () => void;
 }
 
 export function TagBadge({
@@ -14,6 +16,7 @@ export function TagBadge({
   clickable = true,
   active,
   className,
+  onSelect,
 }: TagBadgeProps) {
   const badge = (
     <Badge
@@ -29,6 +32,14 @@ export function TagBadge({
       {tag}
     </Badge>
   );
+
+  if (clickable && onSelect) {
+    return (
+      <button type="button" onClick={onSelect} className="inline-flex">
+        {badge}
+      </button>
+    );
+  }
 
   if (clickable) {
     return (

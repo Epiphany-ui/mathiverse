@@ -47,6 +47,23 @@ const API_KEY = process.env.DEEPSEEK_API_KEY ?? "";
 const BASE_URL =
   process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
 
+/** Combine signals without AbortSignal.any (not yet in every TS lib target). */
+function anySignal(signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort();
+      break;
+    }
+    signal.addEventListener(
+      "abort",
+      () => controller.abort(),
+      { once: true },
+    );
+  }
+  return controller.signal;
+}
+
 function buildRequestBody(
   request: ChatCompletionRequest,
   stream: boolean,
@@ -84,6 +101,9 @@ export function isConfigured(): boolean {
 
 /**
  * Non-streaming chat completion. Returns the full response text.
+ *
+ * Callers may pass their own AbortSignal (job cancel / user abort); when none
+ * is given a default deadline prevents a hung upstream from blocking forever.
  */
 export async function chatCompletion(
   request: ChatCompletionRequest,
@@ -101,7 +121,7 @@ export async function chatCompletion(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify(buildRequestBody(request, false)),
-    signal: request.signal,
+    signal: request.signal ?? AbortSignal.timeout(5 * 60_000),
   });
 
   if (!res.ok) {
@@ -126,6 +146,15 @@ export async function chatCompletionStream(
     );
   }
 
+  // The upstream fetch is aborted either by the caller's signal (client
+  // disconnect / job cancel), by our own controller when the downstream
+  // consumer cancels the returned stream, or by the default deadline.
+  const upstream = new AbortController();
+  const signals: AbortSignal[] = [upstream.signal];
+  if (request.signal) signals.push(request.signal);
+  else signals.push(AbortSignal.timeout(15 * 60_000));
+  const signal = anySignal(signals);
+
   const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -133,7 +162,7 @@ export async function chatCompletionStream(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify(buildRequestBody(request, true)),
-    signal: request.signal,
+    signal,
   });
 
   if (!res.ok) {
@@ -141,8 +170,12 @@ export async function chatCompletionStream(
     throw new Error(`DeepSeek API error ${res.status}: ${err}`);
   }
 
+  if (!res.body) {
+    throw new Error("DeepSeek API 返回了空响应体");
+  }
+
   // Transform the DeepSeek SSE stream into a clean text stream
-  const reader = res.body!.getReader();
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
@@ -160,9 +193,9 @@ export async function chatCompletionStream(
 
           for (const line of lines) {
             const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith("data: ")) continue;
+            if (!trimmed || !trimmed.startsWith("data:")) continue;
 
-            const data = trimmed.slice(6);
+            const data = trimmed.slice(5).trim();
             if (data === "[DONE]") {
               controller.close();
               return;
@@ -186,8 +219,23 @@ export async function chatCompletionStream(
         }
         controller.close();
       } catch (e) {
-        controller.error(e);
+        // An abort (client disconnect, cancel, deadline) is a normal end of
+        // stream, not a server error.
+        if (signal.aborted) {
+          controller.close();
+        } else {
+          controller.error(e);
+        }
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // Reader may already be released by the abort path.
+        }
       }
+    },
+    cancel() {
+      upstream.abort();
     },
   });
 }

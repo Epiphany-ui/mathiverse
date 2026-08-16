@@ -83,11 +83,25 @@ export async function retrieveVerifiedExamples(
  * Search manim_examples by cosine similarity to the query.
  * Falls back to empty array if Ollama or Supabase is unavailable.
  */
+const RETRIEVAL_TIMEOUT_MS = 15_000;
+
 export async function retrieveExamples(
   query: string,
   k: number = 3,
+  signal?: AbortSignal,
 ): Promise<ManimExample[]> {
+  // A hung Ollama (model loading, queue backlog) must never stall the
+  // generation pipeline forever — bound the whole lookup and let job
+  // cancellation abort it too.
+  const timeoutSignal = AbortSignal.timeout(RETRIEVAL_TIMEOUT_MS);
+  const anyAbort = signal
+    ? (AbortSignal as typeof AbortSignal & {
+        any(signals: AbortSignal[]): AbortSignal;
+      }).any([signal, timeoutSignal])
+    : timeoutSignal;
   try {
+    if (anyAbort.aborted) return [];
+
     const ollamaUp = await isOllamaRunning();
     if (!ollamaUp) {
       console.warn("[retrieval] Ollama not running — skipping RAG");
@@ -100,8 +114,8 @@ export async function retrieveExamples(
       return [];
     }
 
-    const queryEmbedding = await embed(query);
-    if (!queryEmbedding.length) return [];
+    const queryEmbedding = await embed(query, anyAbort);
+    if (!queryEmbedding.length || anyAbort.aborted) return [];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (client as any).rpc("match_manim_examples", {
@@ -116,7 +130,9 @@ export async function retrieveExamples(
 
     return (data ?? []) as ManimExample[];
   } catch (err) {
-    console.warn("[retrieval] Search failed:", err);
+    if (!(err instanceof Error && err.name === "AbortError")) {
+      console.warn("[retrieval] Search failed:", err);
+    }
     return [];
   }
 }

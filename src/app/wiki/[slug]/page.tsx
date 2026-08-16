@@ -30,6 +30,7 @@ import {
 import type { WikiEntry } from "@/types";
 import { getCommentsForTarget } from "@/lib/db/queries";
 import { WIKI_CATEGORIES } from "@/lib/wiki/categories";
+import { MathText } from "@/components/content/math-text";
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -46,32 +47,70 @@ interface WikiEntryPageProps {
   params: Promise<{ slug: string }>;
 }
 
+type MetaRow = {
+  title: string;
+  summary: string | null;
+  cover_url: string | null;
+} | null;
+
+/** Fetch entry metadata for the head.  Unpublished entries are only exposed
+ *  to the entry's author or admins/owners — anonymous callers must never see
+ *  draft metadata, matching the body's access rules. */
+async function fetchMetaRow(
+  supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
+  slug: string,
+): Promise<MetaRow> {
+  const { data } = await supabase
+    .from("wiki_entries")
+    .select("title, summary, cover_url")
+    .eq("slug", slug)
+    .eq("is_published", true)
+    .single();
+  if (data) return data as MetaRow;
+
+  // Not published via RLS — only reveal drafts to privileged viewers.
+  const admin = getAdminClient();
+  if (!admin) return null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    const role = (profile as { role?: string | null } | null)?.role;
+    let allowed = role === "admin" || role === "owner";
+    if (!allowed) {
+      const { data: hidden } = await admin
+        .from("wiki_entries")
+        .select("author_id")
+        .eq("slug", slug)
+        .single();
+      allowed =
+        Boolean(hidden) &&
+        (hidden as unknown as { author_id?: string | null }).author_id === user.id;
+    }
+    if (!allowed) return null;
+
+    const { data: draft } = await admin
+      .from("wiki_entries")
+      .select("title, summary, cover_url")
+      .eq("slug", slug)
+      .single();
+    return (draft as MetaRow) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function generateMetadata({
   params,
 }: WikiEntryPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const admin = getAdminClient();
-  // Try published first, then fall back to admin client for unpublished
   const supabase = await createClient();
-  let row: any = null;
-  if (supabase) {
-    const { data } = await supabase
-      .from("wiki_entries")
-      .select("title, summary, cover_url")
-      .eq("slug", slug)
-      .eq("is_published", true)
-      .single();
-    row = data;
-  }
-  // Fallback: entry might be unpublished — try admin client
-  if (!row && admin) {
-    const { data } = await (admin as any)
-      .from("wiki_entries")
-      .select("title, summary, cover_url")
-      .eq("slug", slug)
-      .single();
-    row = data;
-  }
+  const row: MetaRow = supabase ? await fetchMetaRow(supabase, slug) : null;
   if (!row) return { title: "词条未找到 — Mathiverse" };
 
   return {
@@ -88,11 +127,11 @@ export async function generateMetadata({
 /** Fetch a wiki entry, falling back to admin client for unpublished entries
  *  when the current user is an admin/owner or the entry's author. */
 async function resolveWikiEntry(
-  supabase: any,
+  supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
   slug: string,
 ): Promise<WikiEntry | null> {
   // Try published first (fast path — respects RLS)
-  let entry = await getWikiEntryBySlug(supabase, slug);
+  const entry = await getWikiEntryBySlug(supabase, slug);
   if (entry) return entry;
 
   // Not found via RLS — check if user has unpublished access
@@ -104,12 +143,12 @@ async function resolveWikiEntry(
     if (!user) return null;
 
     // Check admin/owner role
-    const { data: profile } = await (admin as any)
+    const { data: profile } = await admin
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single();
-    const role = (profile as any)?.role as string | undefined;
+    const role = (profile as { role?: string | null } | null)?.role;
     if (role === "admin" || role === "owner") {
       return getWikiEntryBySlug(supabase, slug, {
         includeUnpublished: true,
@@ -118,12 +157,12 @@ async function resolveWikiEntry(
     }
 
     // Check if user is the entry's author
-    const { data: hidden } = await (admin as any)
+    const { data: hidden } = await admin
       .from("wiki_entries")
       .select("author_id")
       .eq("slug", slug)
       .single();
-    if (hidden && (hidden as any).author_id === user.id) {
+    if (hidden && (hidden as { author_id?: string | null }).author_id === user.id) {
       return getWikiEntryBySlug(supabase, slug, {
         includeUnpublished: true,
         adminClient: admin,
@@ -254,7 +293,7 @@ export default async function WikiEntryPage({ params }: WikiEntryPageProps) {
                 </span>
               )}
               <h1 className="font-[family-name:var(--font-cormorant)] text-4xl font-normal tracking-[-0.5px] text-[#141413] leading-tight">
-                {entry.title}
+                <MathText text={entry.title} />
               </h1>
               <div className="flex items-center justify-center gap-4 text-sm text-[#6c6a64] font-light">
                 <span className="flex items-center gap-1">

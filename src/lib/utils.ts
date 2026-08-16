@@ -19,3 +19,22 @@ export function isLocalRendererUrl(url: string | null | undefined): url is strin
     return false
   }
 }
+
+/**
+ * Normalize a user-supplied personal website URL. Accepts only http/https
+ * (blocking javascript:, data: and other schemes); a bare "example.com" gets
+ * an https:// prefix. Returns "" for anything unparseable.
+ */
+export function sanitizeWebsiteUrl(raw: string | null | undefined): string {
+  if (!raw) return ""
+  const trimmed = raw.trim()
+  if (!trimmed) return ""
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return ""
+    return parsed.toString()
+  } catch {
+    return ""
+  }
+}

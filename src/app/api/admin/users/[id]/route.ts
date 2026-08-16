@@ -21,14 +21,18 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  let body: Record<string, unknown>;
+  let body: unknown;
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+  }
+  const parsed = body as Record<string, unknown>;
 
   const updates: Record<string, unknown> = {};
-  const isRoleChange = typeof body.role === "string" && ["owner", "admin", "user"].includes(body.role);
-  const isBanChange = typeof body.banned === "boolean";
+  const isRoleChange = typeof parsed.role === "string" && ["owner", "admin", "user"].includes(parsed.role);
+  const isBanChange = typeof parsed.banned === "boolean";
 
   // --- Role change: owner only ---
   if (isRoleChange) {
@@ -52,7 +56,7 @@ export async function PATCH(
     }
 
     // Block promoting anyone to owner via API — ownership transfer is SQL-only
-    if (body.role === "owner") {
+    if (parsed.role === "owner") {
       return NextResponse.json(
         { error: "馆长身份只能通过数据库直接操作转让" },
         { status: 403 },
@@ -69,7 +73,7 @@ export async function PATCH(
       );
     }
 
-    updates.role = body.role;
+    updates.role = parsed.role;
   }
 
   // --- Ban/unban: admin or owner ---
@@ -97,12 +101,12 @@ export async function PATCH(
       );
     }
 
-    if (body.banned === false) {
+    if (parsed.banned === false) {
       // Unban
       updates.banned_until = null;
     } else {
       // Ban with optional duration
-      const duration = typeof body.duration === "string" ? body.duration : null;
+      const duration = typeof parsed.duration === "string" ? parsed.duration : null;
       if (duration) {
         const match = duration.match(/^(\d+)([hd])$/);
         if (match) {
@@ -139,7 +143,7 @@ export async function PATCH(
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "更新用户失败，请重试" }, { status: 500 });
   }
 
   // Audit log
@@ -147,7 +151,7 @@ export async function PATCH(
   if (actorId) {
     await (admin as any).from("admin_audit_log").insert({
       admin_id: actorId,
-      action: isRoleChange ? "change_role" : isBanChange ? (body.banned ? "ban" : "unban") : "update_user",
+      action: isRoleChange ? "change_role" : isBanChange ? (parsed.banned ? "ban" : "unban") : "update_user",
       target_type: "profile",
       target_id: id,
       details: updates,

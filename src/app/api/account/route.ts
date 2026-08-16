@@ -26,11 +26,25 @@ export async function DELETE() {
     );
   }
 
+  // The owner (super admin) account must not be deletable — there would be
+  // no one left able to manage the site.
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile && (profile as { role?: string | null }).role === "owner") {
+    return NextResponse.json(
+      { error: "馆长账号无法自行删除" },
+      { status: 403 },
+    );
+  }
+
   const { error } = await admin.auth.admin.deleteUser(user.id);
 
   if (error) {
     return NextResponse.json(
-      { error: error.message },
+      { error: "删除账号失败，请重试" },
       { status: 500 },
     );
   }

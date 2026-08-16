@@ -4,7 +4,40 @@
  * Uses the service_role key for privileged operations (storage uploads).
  * NEVER import this in client components.
  */
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * Loosely-typed database shape for the service-role client.
+ *
+ * No generated Supabase types are committed to this repo, so the default
+ * createClient generic resolves mutations to never. This shape restores
+ * permissive (but not any) typing for tables under the public schema;
+ * callers still cast individual rows to the fields they selected.
+ */
+export interface LooseDatabase {
+  public: {
+    Tables: Record<
+      string,
+      {
+        Row: Record<string, unknown>;
+        Insert: Record<string, unknown>;
+        Update: Record<string, unknown>;
+        Relationships: [];
+      }
+    >;
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+}
+
+export type AdminDb = SupabaseClient<LooseDatabase, "public", "public">;
+
+/** View an admin client through the loose database shape so mutations type-check. */
+export function asAdminDb(client: SupabaseClient): AdminDb {
+  return client as unknown as AdminDb;
+}
 
 let adminClient: ReturnType<typeof createClient> | null = null;
 

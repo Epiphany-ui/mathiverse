@@ -15,12 +15,17 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const type = url.searchParams.get("type") ?? "visualizations";
-  if (!["visualizations", "articles", "wiki_entries"].includes(type)) {
+  if (!["visualizations", "articles", "wiki_entries", "comments"].includes(type)) {
     return NextResponse.json({ error: "不支持的类型" }, { status: 400 });
   }
 
-  const { data, error } = await (admin as any).from(type).select("id, title, author_id, created_at").order("created_at", { ascending: false }).limit(50);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const isComment = type === "comments";
+  const { data, error } = await (admin as any)
+    .from(type)
+    .select(isComment ? "id, body, author_id, created_at" : "id, title, author_id, created_at")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) return NextResponse.json({ error: "内容列表加载失败" }, { status: 500 });
 
   const authorIds = [...new Set((data ?? []).map((d: any) => d.author_id).filter(Boolean))];
   const authorMap = new Map<string, string>();
@@ -30,7 +35,8 @@ export async function GET(request: Request) {
   }
 
   const items = (data ?? []).map((d: any) => ({
-    id: d.id, title: d.title,
+    id: d.id,
+    title: isComment ? String(d.body ?? "").slice(0, 60) : d.title,
     author: authorMap.get(d.author_id) ?? "—",
     created_at: d.created_at,
   }));

@@ -21,19 +21,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
 
-  let body: Record<string, unknown>;
+  let body: unknown;
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+  }
+  const parsed = body as Record<string, unknown>;
 
-  const title = typeof body.title === "string" ? body.title.trim() : "";
-  const slug = typeof body.slug === "string" ? body.slug.trim() : "";
-  const category = typeof body.category === "string" ? body.category : "";
-  const summary = typeof body.summary === "string" ? body.summary : "";
-  const bodyMd = typeof body.bodyMd === "string" ? body.bodyMd : "";
+  const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+  // User slugs are whitelisted to URL-safe characters only.
+  const slug = typeof parsed.slug === "string"
+    ? parsed.slug.trim().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80)
+    : "";
+  const category = typeof parsed.category === "string" ? parsed.category : "";
+  const summary = typeof parsed.summary === "string" ? parsed.summary.slice(0, 2_000) : "";
+  const bodyMd = typeof parsed.bodyMd === "string" ? parsed.bodyMd : "";
 
   if (!title || !bodyMd) {
     return NextResponse.json({ error: "标题和正文不能为空" }, { status: 400 });
+  }
+  if (title.length > 200 || bodyMd.length > 200_000) {
+    return NextResponse.json({ error: "标题或正文过长" }, { status: 400 });
   }
   if (!VALID_CATEGORIES.includes(category)) {
     return NextResponse.json(

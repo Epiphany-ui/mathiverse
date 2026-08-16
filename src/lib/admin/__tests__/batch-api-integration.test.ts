@@ -64,7 +64,7 @@ test("All batch actions are valid and recognized", () => {
   for (const action of VALID_ACTIONS) {
     assert.ok(VALID_ACTIONS.includes(action));
   }
-  assert.equal(VALID_ACTIONS.includes("invalid_action" as any), false);
+  assert.equal((VALID_ACTIONS as readonly string[]).includes("invalid_action"), false);
 });
 
 test("delete_content: parseTargetsForDelete handles all 4 content types", () => {

@@ -12,71 +12,71 @@
 # Error details
 
 ```
-Test timeout of 30000ms exceeded.
-```
+Error: expect(locator).toBeVisible() failed
 
-```
-Error: locator.evaluate: Test timeout of 30000ms exceeded.
+Locator: getByText('动画已完成，可以预览或发布')
+Expected: visible
+Timeout: 5000ms
+Error: element(s) not found
+
 Call log:
-  - waiting for getByRole('button', { name: '任务', exact: true })
+  - Expect "toBeVisible" with timeout 5000ms
+  - waiting for getByText('动画已完成，可以预览或发布')
 
 ```
-
-# Page snapshot
 
 ```yaml
-- generic [active] [ref=e1]:
-  - generic [ref=e3]:
-    - banner [ref=e4]:
-      - generic [ref=e5]:
-        - link "Mathiverse" [ref=e6] [cursor=pointer]:
-          - /url: /
-        - navigation [ref=e12]:
-          - link [ref=e13] [cursor=pointer]:
-            - /url: /explore
-            - button "发现" [ref=e14]
-          - link [ref=e15] [cursor=pointer]:
-            - /url: /wiki
-            - button "百科" [ref=e16]
-          - link [ref=e17] [cursor=pointer]:
-            - /url: /sandbox
-            - button "创作" [ref=e18]
-        - button [ref=e20]
-        - generic [ref=e22]:
-          - link [ref=e23] [cursor=pointer]:
-            - /url: /auth/login
-            - button "登录" [ref=e24]
-          - link [ref=e26] [cursor=pointer]:
-            - /url: /auth/register
-            - button "注册" [ref=e27]
-    - main [ref=e29]:
-      - generic [ref=e30]:
-        - generic [ref=e31]:
-          - heading "欢迎回来" [level=1] [ref=e32]
-          - paragraph [ref=e33]: 登录你的 Mathiverse 账户
-        - generic [ref=e34]:
-          - generic [ref=e35]:
-            - text: 邮箱
-            - textbox "邮箱" [ref=e36]:
-              - /placeholder: name@example.com
-          - generic [ref=e37]:
-            - text: 密码
-            - textbox "密码" [ref=e38]:
-              - /placeholder: ••••••••
-          - button "登录" [ref=e39]
-        - generic [ref=e40]:
-          - separator [ref=e41]
-          - generic [ref=e42]: 或
-          - separator [ref=e43]
-        - button "使用 GitHub 登录" [ref=e44]
-        - paragraph [ref=e45]:
-          - link "忘记密码？" [ref=e46] [cursor=pointer]:
-            - /url: /auth/reset-password
-        - paragraph [ref=e47]:
-          - text: 还没有账户？
-          - link "注册" [ref=e48] [cursor=pointer]:
-            - /url: /auth/register
-  - region "Notifications alt+T"
+- banner:
+  - link "Mathiverse":
+    - /url: /
+  - navigation:
+    - link "发现":
+      - /url: /explore
+      - button "发现"
+    - link "百科":
+      - /url: /wiki
+      - button "百科"
+    - link "创作":
+      - /url: /sandbox
+      - button "创作"
+  - button
+  - button "切换主题"
+  - link "登录":
+    - /url: /auth/login
+    - button "登录"
+  - link "注册":
+    - /url: /auth/register
+    - button "注册"
+- main:
+  - region "创作任务":
+    - text: PROOF / 01
+    - heading "构造你的数学场景" [level=1]
+    - paragraph: 任务已进入队列
+    - text: 想看到什么？
+    - textbox "想看到什么？":
+      - /placeholder: 例如：让单位圆展开成正弦曲线，并标注角度关系
+      - text: 单位圆
+    - button "开始生成" [disabled]
+    - list "生成阶段":
+      - listitem: 01 镜头规划
+      - listitem: 02 数学检索
+      - listitem: 03 场景生成
+      - listitem: 04 安全验证
+      - listitem: 05 动画渲染
+    - button "停止"
+    - button "接管编辑"
+    - button "发布作品" [disabled]
+  - region "动画画布":
+    - text: CANVAS / 02 实时预览
+    - strong: 证明正在展开
+    - paragraph: 可以离开页面；任务会在后台继续，回来后自动恢复。
+  - list "代码版本": 尚无版本
+  - region "Manim 代码":
+    - text: CODE / 03 scene.py
+    - button "保存版本"
+    - textbox
+- region "Notifications alt+T"
+- alert
 ```
 
 # Test source
@@ -126,8 +126,7 @@ Call log:
   42  |   const usesPanelTabs = await page.evaluate(() => innerWidth < 900);
   43  |   if (usesPanelTabs) {
   44  |     const taskTab = page.getByRole("button", { name: "任务", exact: true });
-> 45  |     await taskTab.evaluate((element: HTMLButtonElement) => element.click());
-      |                   ^ Error: locator.evaluate: Test timeout of 30000ms exceeded.
+  45  |     await taskTab.evaluate((element: HTMLButtonElement) => element.click());
   46  |   }
   47  |   await expect(page.getByLabel("想看到什么？")).toBeVisible();
   48  | }
@@ -159,7 +158,8 @@ Call log:
   74  |   await page.getByLabel("想看到什么？").fill("绘制单位圆");
   75  |   await page.getByRole("button", { name: "开始生成" }).click();
   76  |   await expect(page.getByText("任务已进入队列")).toBeVisible();
-  77  |   await expect(page.getByText("动画已完成，可以预览或发布")).toBeVisible();
+> 77  |   await expect(page.getByText("动画已完成，可以预览或发布")).toBeVisible();
+      |                                                 ^ Error: expect(locator).toBeVisible() failed
   78  |   await expect(page.getByLabel("动画画布")).toHaveAttribute("data-canvas-state", "preview");
   79  |   await expect(page.getByRole("button", { name: "发布作品" })).toBeEnabled();
   80  | });
@@ -228,4 +228,26 @@ Call log:
   143 |     width: innerWidth,
   144 |     height: innerHeight,
   145 |     scrollWidth: document.documentElement.scrollWidth,
+  146 |   }));
+  147 |   expect(dimensions.width).toBe(configured?.width);
+  148 |   expect(dimensions.height).toBe(configured?.height);
+  149 |   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.width);
+  150 |   const reducedMotion = await page
+  151 |     .locator('[data-studio-motion-layer="shell"]')
+  152 |     .evaluate((element) => {
+  153 |       const style = getComputedStyle(element);
+  154 |       return {
+  155 |         durationSeconds: Number.parseFloat(style.animationDuration) || 0,
+  156 |         transform: style.transform,
+  157 |       };
+  158 |     });
+  159 |   expect(reducedMotion.durationSeconds).toBeLessThanOrEqual(0.15);
+  160 |   expect(reducedMotion.transform).toBe("none");
+  161 |   await showTaskPanel(page);
+  162 |   await expect(page.getByLabel("想看到什么？")).toBeVisible();
+  163 |   await expect(page.getByRole("button", { name: "开始生成" })).toBeVisible();
+  164 |   await expect(page.getByLabel("创作任务")).toBeVisible();
+  165 |   await expect(page.getByLabel("工作区面板")).toBeAttached();
+  166 | });
+  167 | 
 ```

@@ -165,24 +165,11 @@ export class SupabaseGenerationJobStore implements GenerationJobStore {
     return data ? this.snapshot(data as DbRow) : null;
   }
 
-  async updateJob(
+  private async applyUpdate(
     jobId: string,
-    patch: Partial<
-      Pick<
-        GenerationJobSnapshot,
-        | "status"
-        | "phase"
-        | "scenePlan"
-        | "currentVersion"
-        | "validation"
-        | "render"
-        | "repairAttempt"
-        | "runToken"
-        | "failureReason"
-        | "cancelRequested"
-      >
-    >,
-  ): Promise<void> {
+    patch: Parameters<GenerationJobStore["updateJob"]>[1],
+    expectedRunToken?: number,
+  ): Promise<boolean> {
     const columns: DbRow = { updated_at: new Date().toISOString() };
     if (patch.status !== undefined) columns.status = patch.status;
     if (patch.phase !== undefined) columns.phase = patch.phase;
@@ -196,11 +183,15 @@ export class SupabaseGenerationJobStore implements GenerationJobStore {
     if (patch.cancelRequested !== undefined) {
       columns.cancel_requested = patch.cancelRequested;
     }
-    const { error } = await this.client
-      .from("generation_jobs")
-      .update(columns)
-      .eq("id", jobId);
+
+    let query = this.client.from("generation_jobs").update(columns).eq("id", jobId);
+    if (expectedRunToken !== undefined) {
+      query = query.eq("run_token", expectedRunToken);
+    }
+    const { data, error } = await query.select("id");
     if (error) this.fail("update job", error);
+    const matched = Array.isArray(data) && data.length > 0;
+    if (!matched) return false;
 
     if (patch.validation !== undefined || patch.render !== undefined) {
       const versionId =
@@ -214,6 +205,22 @@ export class SupabaseGenerationJobStore implements GenerationJobStore {
         });
       }
     }
+    return true;
+  }
+
+  async updateJob(
+    jobId: string,
+    patch: Parameters<GenerationJobStore["updateJob"]>[1],
+  ): Promise<void> {
+    await this.applyUpdate(jobId, patch);
+  }
+
+  async updateJobIfCurrent(
+    jobId: string,
+    expectedRunToken: number,
+    patch: Parameters<GenerationJobStore["updateJob"]>[1],
+  ): Promise<boolean> {
+    return this.applyUpdate(jobId, patch, expectedRunToken);
   }
 
   async saveVersion(

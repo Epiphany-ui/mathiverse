@@ -98,7 +98,7 @@ function ChatBubble({
               已提取 Python 代码
             </div>
             <pre className="text-xs font-mono bg-background/50 rounded p-2 overflow-x-auto max-h-20 overflow-y-auto">
-              <code>{message.code.slice(0, 200)}...</code>
+              <code>{message.code.length > 200 ? message.code.slice(0, 200) + "..." : message.code}</code>
             </pre>
           </div>
         )}

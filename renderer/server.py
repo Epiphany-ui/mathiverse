@@ -8,10 +8,12 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -38,7 +40,10 @@ except ModuleNotFoundError:  # Supports `cd renderer && python server.py`.
     )
 
 
-HOST = os.environ.get("RENDER_HOST", "0.0.0.0")
+# Bind loopback by default — the renderer executes user code and must not be
+# reachable from the network unless the operator explicitly asks for it
+# (Docker/Render set RENDER_HOST=0.0.0.0 themselves).
+HOST = os.environ.get("RENDER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "9876"))
 # ffmpeg/ffprobe may live in the venv bin dir (not on PATH when the venv
 # wasn't activated).  Resolve them relative to the running interpreter.
@@ -57,15 +62,24 @@ _FFPROBE = shutil.which("ffprobe") or (
 _PUBLIC = os.environ.get("RENDERER_PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL")
 PUBLIC_URL = _PUBLIC.rstrip("/") if _PUBLIC else f"http://127.0.0.1:{PORT}"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "mathiverse-renderer"
-STAGING_DIR = OUTPUT_DIR / ".staging"
+# Staging lives OUTSIDE the static output mount so in-flight scene.py sources
+# can never be read via /output/...
+STAGING_DIR = Path(tempfile.gettempdir()) / "mathiverse-renderer-staging"
 MANIM_TIMEOUT = 120
 MAX_CODE_SIZE = 50_000
 MAX_ERROR_DETAIL = 6_000
 VALID_QUALITIES = frozenset({"-ql", "-qm", "-qh", "-qk"})
 VALID_FORMATS = frozenset({"mp4", "gif"})
+# Bound concurrent Manim processes; extra requests fail fast with 429/busy
+# instead of queueing indefinitely and exhausting CPU/memory.
+MAX_CONCURRENT_RENDERS = int(os.environ.get("RENDER_MAX_CONCURRENCY", "2"))
+VOLATILE_TTL_SECONDS = 24 * 60 * 60
+STAGING_TTL_SECONDS = 60 * 60
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 STAGING_DIR.mkdir(parents=True, exist_ok=True)
+
+_RENDER_SLOTS = asyncio.Semaphore(MAX_CONCURRENT_RENDERS)
 
 LOGGER = logging.getLogger("mathiverse.renderer")
 ACTIVE_PROCESSES: dict[str, subprocess.Popen[str]] = {}
@@ -83,13 +97,36 @@ KEY_LOCKS: dict[str, _KeyLockEntry] = {}
 KEY_LOCKS_GUARD = asyncio.Lock()
 
 
+def _cleanup_stale_artifacts() -> None:
+    """Best-effort removal of staging leftovers and expired volatile renders."""
+    now = time.time()
+    for directory, ttl in (
+        (STAGING_DIR, STAGING_TTL_SECONDS),
+        (OUTPUT_DIR / "volatile", VOLATILE_TTL_SECONDS),
+    ):
+        if not directory.is_dir():
+            continue
+        for child in directory.iterdir():
+            try:
+                if now - child.stat().st_mtime <= ttl:
+                    continue
+                if child.is_dir():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)
+            except OSError:
+                continue
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Warm up Manim at startup: the first `manim --version` probe imports
     # numpy/scipy/manim, which can exceed the per-request timeout on slow
     # hosts (Render free tier).  Doing it here in the background means
     # requests never hit a cold import.
-    asyncio.get_running_loop().create_task(asyncio.to_thread(get_manim_version))
+    loop = asyncio.get_running_loop()
+    loop.create_task(asyncio.to_thread(get_manim_version))
+    loop.create_task(asyncio.to_thread(_cleanup_stale_artifacts))
     yield
 
 
@@ -295,6 +332,14 @@ def _sanitize_detail(detail: str, staging_dir: Path) -> str:
     }
     for value, replacement in sorted(replacements.items(), key=lambda item: -len(item[0])):
         clean = clean.replace(value, replacement)
+    # Strip remaining absolute paths (venv, home, site-packages, ...) so
+    # internal filesystem layout never leaks through error text.
+    clean = re.sub(
+        r"(?:[A-Za-z]:[\\/]|/(?:usr|home|root|tmp|var|opt|app|workspace|venv|private)/)"
+        r"[^\s'\"<>:;()]*",
+        "<path>",
+        clean,
+    )
     clean = clean.strip()
     if len(clean) > MAX_ERROR_DETAIL:
         clean = "[technical detail truncated]\n" + clean[-MAX_ERROR_DETAIL:]
@@ -302,11 +347,20 @@ def _sanitize_detail(detail: str, staging_dir: Path) -> str:
 
 
 def _render_diagnostic(detail: str) -> ValidationIssueModel:
-    line_match = re.search(r"scene\.py[^\n]*?line\s+(\d+)", detail, re.IGNORECASE)
+    # Match both traceback flavours:
+    #   classic:  File "scene.py", line 4, in construct
+    #   rich:     <workspace>/scene.py: <line> in construct
+    # The USER frame is the deepest (last) scene.py occurrence — Manim's own
+    # internals also reference scene.py and appear first.
+    matches = re.findall(
+        r"scene\.py[^\n]*?(?:line\s+|:[^\d\n]*(?:\n[^\d\n]*)?)(\d+)",
+        detail,
+        re.IGNORECASE,
+    )
     return ValidationIssueModel(
         code="render",
         message="Manim could not render this scene.",
-        line=int(line_match.group(1)) if line_match else None,
+        line=int(matches[-1]) if matches else None,
     )
 
 
@@ -328,19 +382,44 @@ def _unregister_process(request_id: str, process: subprocess.Popen[str]) -> bool
         return cancelled
 
 
+def _terminate_tree(process: subprocess.Popen[str]) -> None:
+    """Terminate a render and its children (ffmpeg etc.), escalating to kill.
+
+    Manim spawns ffmpeg subprocesses; signalling only the direct child leaves
+    them running as orphans, holding CPU and staging files.  On POSIX the
+    render starts its own process group (start_new_session) so we can signal
+    the whole group; on Windows taskkill /T handles the tree.
+    """
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+            capture_output=True,
+            check=False,
+        )
+        return
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError):
+        process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            process.kill()
+        process.wait(timeout=3)
+
+
 def _cancel_process(request_id: str) -> bool:
     with ACTIVE_PROCESSES_LOCK:
         process = ACTIVE_PROCESSES.get(request_id)
         if process is None:
             return False
         CANCELLED_REQUESTS.add(request_id)
-    if process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=3)
+    _terminate_tree(process)
     return True
 
 
@@ -402,17 +481,18 @@ def _render_manim_blocking(
         fmt,
     ]
     process: subprocess.Popen[str] | None = None
+    popen_kwargs: dict[str, object] = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+        "cwd": staging_dir,
+    }
+    if os.name != "nt":
+        popen_kwargs["start_new_session"] = True
     try:
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=staging_dir,
-        )
+        process = subprocess.Popen(command, **popen_kwargs)
         if not _register_process(request_id, process):
-            process.terminate()
-            process.wait(timeout=3)
+            _terminate_tree(process)
             return RenderResponse(
                 success=False,
                 error="该 request_id 已有渲染任务正在运行。",
@@ -424,11 +504,11 @@ def _render_manim_blocking(
         try:
             stdout, stderr = process.communicate(timeout=MANIM_TIMEOUT)
         except subprocess.TimeoutExpired:
-            process.terminate()
+            _terminate_tree(process)
             try:
                 stdout, stderr = process.communicate(timeout=3)
             except subprocess.TimeoutExpired:
-                process.kill()
+                _terminate_tree(process)
                 stdout, stderr = process.communicate()
             detail = stderr or stdout or "Manim timed out without diagnostic output."
             LOGGER.error("Manim render timed out for key %s:\n%s", render_key, detail)
@@ -499,8 +579,7 @@ def _render_manim_blocking(
         if process is not None:
             _unregister_process(request_id, process)
             if process.poll() is None:
-                process.kill()
-                process.wait(timeout=3)
+                _terminate_tree(process)
         shutil.rmtree(staging_dir, ignore_errors=True)
 
 
@@ -590,36 +669,52 @@ async def render(request: RenderRequest) -> RenderResponse:
     cacheable = is_render_cacheable(request.code)
     stable_path = _cached_path(render_key, validation.scene_name, request.format)
 
-    async with _render_key_lock(render_key):
-        if cacheable and await asyncio.to_thread(stable_path.is_file):
+    # Bound concurrent renders: fail fast instead of queueing forever.
+    if _RENDER_SLOTS.locked():
+        return RenderResponse(
+            success=False,
+            error="渲染服务繁忙，请稍后重试。",
+            diagnostics=[ValidationIssueModel(code="busy", message="Renderer is at maximum concurrency.")],
+            scene_name=validation.scene_name,
+            render_key=render_key,
+        )
+    # asyncio.Semaphore has no try-acquire; the locked() check above keeps the
+    # fail-fast path, and this acquire only ever queues for a moment when two
+    # requests race past the check.
+    await _RENDER_SLOTS.acquire()
+    try:
+        async with _render_key_lock(render_key):
+            if cacheable and await asyncio.to_thread(stable_path.is_file):
+                return await asyncio.to_thread(
+                    _artifact_response,
+                    stable_path,
+                    request.format,
+                    validation.scene_name,
+                    render_key,
+                    cache_hit=True,
+                )
+
+            if cacheable:
+                destination = stable_path
+            else:
+                destination = (
+                    OUTPUT_DIR
+                    / "volatile"
+                    / uuid.uuid4().hex
+                    / f"{validation.scene_name}.{request.format}"
+                )
             return await asyncio.to_thread(
-                _artifact_response,
-                stable_path,
+                _render_manim_blocking,
+                request.code,
+                request.quality,
                 request.format,
+                request.request_id,
                 validation.scene_name,
                 render_key,
-                cache_hit=True,
+                destination,
             )
-
-        if cacheable:
-            destination = stable_path
-        else:
-            destination = (
-                OUTPUT_DIR
-                / "volatile"
-                / uuid.uuid4().hex
-                / f"{validation.scene_name}.{request.format}"
-            )
-        return await asyncio.to_thread(
-            _render_manim_blocking,
-            request.code,
-            request.quality,
-            request.format,
-            request.request_id,
-            validation.scene_name,
-            render_key,
-            destination,
-        )
+    finally:
+        _RENDER_SLOTS.release()
 
 
 @app.delete("/render/{request_id}")

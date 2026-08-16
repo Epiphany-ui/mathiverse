@@ -262,7 +262,7 @@ export async function buildFeedItems(
 ): Promise<FeedItem[]> {
   // Feed cards only need metadata — skip heavy source_code / body_md columns
   const FEED_VIZ_COLS = "id, title, description, tags, poster_url, video_url, author_id, likes_count, comments_count, created_at";
-  const FEED_ARTICLE_COLS = "id, title, body_md, tags, cover_url, author_id, likes_count, comments_count, created_at";
+  const FEED_ARTICLE_COLS = "id, title, body_md, tags, cover_url, embedded_viz, author_id, likes_count, comments_count, created_at";
 
   // Fetch visualizations + their authors
   const { data: vizData, error: vizErr } = await client
@@ -303,19 +303,34 @@ export async function buildFeedItems(
     createdAt: v.created_at ?? v.createdAt,
   }));
 
-  const articleItems: FeedItem[] = (articleData ?? []).map((a: any) => ({
-    type: "article" as const,
-    id: a.id,
-    title: a.title,
-    description: (a.body_md ?? a.bodyMd ?? "").slice(0, 150) + "...",
-    coverUrl: a.cover_url ?? a.coverUrl ?? null,
-    posterUrl: a.cover_url ?? a.coverUrl ?? null,
-    tags: a.tags ?? [],
-    author: normProfile(a.profiles) ?? { id: a.authorId ?? a.author_id ?? "unknown", username: "unknown", displayName: "Unknown", avatarUrl: null },
-    likesCount: a.likes_count ?? a.likesCount ?? 0,
-    commentsCount: a.comments_count ?? a.commentsCount ?? 0,
-    createdAt: a.created_at ?? a.createdAt,
-  }));
+  // Map visualization ids → poster so articles can inherit the poster of
+  // their first embedded visualization (their real cover image).
+  const posterByVizId = new Map<string, string | null>();
+  for (const v of vizData ?? []) {
+    posterByVizId.set(String(v.id), (v.poster_url ?? v.posterUrl ?? null) as string | null);
+  }
+
+  const articleItems: FeedItem[] = (articleData ?? []).map((a: any) => {
+    const embedded: unknown[] = Array.isArray(a.embedded_viz) ? a.embedded_viz : [];
+    const embeddedPoster =
+      embedded
+        .map((id) => posterByVizId.get(String(id)))
+        .find((poster) => poster) ?? null;
+    const cover = a.cover_url ?? a.coverUrl ?? embeddedPoster;
+    return {
+      type: "article" as const,
+      id: a.id,
+      title: a.title,
+      description: (a.body_md ?? a.bodyMd ?? "").slice(0, 150) + "...",
+      coverUrl: cover ?? null,
+      posterUrl: cover ?? null,
+      tags: a.tags ?? [],
+      author: normProfile(a.profiles) ?? { id: a.authorId ?? a.author_id ?? "unknown", username: "unknown", displayName: "Unknown", avatarUrl: null },
+      likesCount: a.likes_count ?? a.likesCount ?? 0,
+      commentsCount: a.comments_count ?? a.commentsCount ?? 0,
+      createdAt: a.created_at ?? a.createdAt,
+    };
+  });
 
   const all = [...vizItems, ...articleItems];
 

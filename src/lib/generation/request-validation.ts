@@ -150,6 +150,16 @@ export function validatePatchAction(
   }
 
   if (type === "save_manual_version" && typeof b.code === "string") {
+    if (b.code.length > MAX_CODE_LENGTH) {
+      return {
+        errors: [
+          {
+            field: "code",
+            message: `code 不能超过 ${MAX_CODE_LENGTH} 字符`,
+          },
+        ],
+      };
+    }
     (action as { type: "save_manual_version"; code: string }).code = b.code;
   }
 

@@ -74,8 +74,9 @@ export function CodeViewer({
       <div
         className={cn(
           "transition-all duration-200 overflow-auto",
-          isOpen ? `max-h-[${maxHeight}]` : "max-h-0",
+          isOpen ? "opacity-100" : "max-h-0 opacity-0",
         )}
+        style={isOpen ? { maxHeight } : undefined}
       >
         <pre className="p-4 text-sm font-mono leading-relaxed overflow-x-auto bg-muted/10">
           <code>{code}</code>

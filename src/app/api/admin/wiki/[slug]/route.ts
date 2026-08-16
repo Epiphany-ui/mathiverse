@@ -31,16 +31,20 @@ export async function PATCH(
   }
 
   const { slug } = await params;
-  let body: Record<string, unknown>;
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+  }
+  const parsed = body as Record<string, unknown>;
 
   const updates: Record<string, unknown> = {};
-  if (typeof body.is_published === "boolean") {
-    updates.is_published = body.is_published;
+  if (typeof parsed.is_published === "boolean") {
+    updates.is_published = parsed.is_published;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -58,11 +62,12 @@ export async function PATCH(
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Failed to update wiki entry:", error.message);
+    return NextResponse.json({ error: "更新词条失败，请重试" }, { status: 500 });
   }
 
   // Audit log
-  const action = body.is_published ? "publish_wiki" : "unpublish_wiki";
+  const action = parsed.is_published ? "publish_wiki" : "unpublish_wiki";
   (admin as any).from("admin_audit_log").insert({
     admin_id: adminUserId,
     action,

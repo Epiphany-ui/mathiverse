@@ -61,21 +61,26 @@ export default function CreateArticlePage() {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    const res = await fetch("/api/articles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim(), bodyMd, tags: cleanTags }),
-    });
+    try {
+      const res = await fetch("/api/articles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), bodyMd, tags: cleanTags }),
+      });
 
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "发布失败");
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? "发布失败");
+        return;
+      }
+
+      const { id } = await res.json();
+      router.push(`/a/${id}`);
+    } catch {
+      setError("网络错误，请稍后重试");
+    } finally {
       setPublishing(false);
-      return;
     }
-
-    const { id } = await res.json();
-    router.push(`/a/${id}`);
   };
 
   return (

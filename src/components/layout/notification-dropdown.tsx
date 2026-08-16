@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -69,15 +69,25 @@ export function NotificationDropdown({
     [fetchNotifications],
   );
 
+  // Latest list for computing unread counts without stale closures.
+  const notificationsRef = useRef(notifications);
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
   const markAsRead = useCallback(
     async (id: string) => {
       try {
-        await fetch("/api/notifications", {
+        const res = await fetch("/api/notifications", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id }),
         });
-        onUnreadCountChange(Math.max(0, unreadCount - 1));
+        if (!res.ok) return;
+        const remainingUnread = notificationsRef.current.filter(
+          (n) => n.id !== id && !n.isRead,
+        ).length;
+        onUnreadCountChange(remainingUnread);
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
         );
@@ -85,7 +95,7 @@ export function NotificationDropdown({
         // Silently degrade
       }
     },
-    [unreadCount, onUnreadCountChange],
+    [onUnreadCountChange],
   );
 
   const markAllAsRead = useCallback(async () => {

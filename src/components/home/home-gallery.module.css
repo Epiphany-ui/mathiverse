@@ -482,6 +482,7 @@
 }
 
 .editorialVisual {
+  position: relative; /* anchor for ContentThumbnail's absolute-fill media */
   flex: 1;
   min-height: 16rem;
   overflow: hidden;

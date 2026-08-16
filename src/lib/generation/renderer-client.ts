@@ -221,6 +221,15 @@ export function createRendererClient(options?: {
           signal: composed.signal,
         });
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          // The caller abandoned this render (cancel / timeout) — tell the
+          // renderer to stop the still-running Manim process.  Fire and
+          // forget so the abort propagates immediately.
+          void fetchImpl(
+            `${baseUrl}/render/${encodeURIComponent(requestId)}`,
+            { method: "DELETE" },
+          ).catch(() => {});
+        }
         throwFetchError(err);
       } finally {
         composed.cleanup();

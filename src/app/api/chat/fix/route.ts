@@ -10,13 +10,30 @@ import {
   parseFixResponse,
   extractCode,
 } from "@/lib/ai/prompts";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 const SIMPLE_ERRORS = /NameError|SyntaxError|IndentationError|AttributeError/;
 
+const MAX_CODE_LENGTH = 100_000;
+const MAX_ERROR_LENGTH = 20_000;
+
 export async function POST(request: NextRequest) {
   try {
+    // Require login — AI calls consume API quota
+    const supabase = await createClient();
+    if (!supabase) {
+      return NextResponse.json({ error: "Supabase 未配置" }, { status: 503 });
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: "请先登录后再使用修复功能" },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const { code, error: renderError } = body;
 
@@ -34,6 +51,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (
+      typeof code !== "string" ||
+      typeof renderError !== "string" ||
+      code.length > MAX_CODE_LENGTH ||
+      renderError.length > MAX_ERROR_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: "代码或错误信息过长" },
+        { status: 400 },
+      );
+    }
+
     const isSimple = SIMPLE_ERRORS.test(renderError);
 
     // ── Try V2 incremental fix first ──
@@ -47,6 +76,7 @@ export async function POST(request: NextRequest) {
         reasoning_effort: isSimple ? undefined : "low",
         temperature: isSimple ? 0.1 : undefined,
         max_tokens: isSimple ? 2048 : 4096,
+        signal: AbortSignal.timeout(3 * 60_000),
       });
 
       const parsed = parseFixResponse(v2Response);
@@ -66,6 +96,7 @@ export async function POST(request: NextRequest) {
       reasoning_effort: isSimple ? undefined : "low",
       temperature: isSimple ? 0.1 : undefined,
       max_tokens: isSimple ? 4096 : 8192,
+      signal: AbortSignal.timeout(3 * 60_000),
     });
 
     const fixedCode = extractCode(v1Response);

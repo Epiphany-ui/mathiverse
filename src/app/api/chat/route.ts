@@ -34,9 +34,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const messages = body.messages ?? [];
-    const currentCode = (body.currentCode as string) ?? undefined;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "无效的 JSON" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return new Response(
+        JSON.stringify({ error: "无效的请求体" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    const parsed = body as { messages?: unknown; currentCode?: unknown };
+    const rawMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
+    const messages = rawMessages
+      .filter(
+        (m): m is { role: string; content: string } =>
+          Boolean(m) &&
+          typeof m === "object" &&
+          typeof (m as { content?: unknown }).content === "string" &&
+          typeof (m as { role?: unknown }).role === "string",
+      )
+      .slice(0, 40);
+    const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
+    if (totalChars > 60_000) {
+      return new Response(
+        JSON.stringify({ error: "消息内容过长" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    const currentCode =
+      typeof parsed.currentCode === "string" ? parsed.currentCode : undefined;
 
     if (!isConfigured()) {
       return new Response(
@@ -61,9 +93,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const history = messages.slice(0, -1).filter(
-      (m: { role: string }) => m.role === "user" || m.role === "assistant",
-    );
+    const history = messages
+      .slice(0, -1)
+      .filter(
+        (m): m is { role: "user" | "assistant"; content: string } =>
+          m.role === "user" || m.role === "assistant",
+      );
 
     const isNewCode = !currentCode || currentCode.trim().length === 0;
 
@@ -76,6 +111,8 @@ export async function POST(request: NextRequest) {
       model: MODELS.code,
       reasoning_effort: isNewCode ? "max" : "high",
       max_tokens: 32768,
+      // Client disconnect aborts the upstream DeepSeek call.
+      signal: request.signal,
     });
 
     return new Response(stream, {

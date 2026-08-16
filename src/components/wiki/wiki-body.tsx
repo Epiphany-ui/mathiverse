@@ -32,8 +32,13 @@ export function WikiBody({ slug, title, bodyMd, isAuthenticated }: WikiBodyProps
   const [cards, setCards] = useState<CardInstance[]>([]);
   // Track portal containers — created once, cleaned up on removal
   const containersRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Every card runs a full AI + render pipeline (real money) — never create
+  // a second card for text that is already generating/animated.
+  const activePromptsRef = useRef(new Set<string>());
 
   const addCard = useCallback((card: CardRequest) => {
+    if (activePromptsRef.current.has(card.prompt)) return;
+    activePromptsRef.current.add(card.prompt);
     let container: HTMLDivElement | null = null;
     if (card.anchor?.parentNode) {
       container = document.createElement("div");
@@ -54,8 +59,31 @@ export function WikiBody({ slug, title, bodyMd, isAuthenticated }: WikiBodyProps
       container.remove();
       containersRef.current.delete(id);
     }
-    setCards((prev) => prev.filter((c) => c.id !== id));
+    setCards((prev) => {
+      const target = prev.find((c) => c.id === id);
+      if (target) activePromptsRef.current.delete(target.prompt);
+      return prev.filter((c) => c.id !== id);
+    });
   }, []);
+
+  // Resume a selection made before logging in: the tooltip redirects to
+  // /auth/login and the selection itself is lost, so stash the prompt and
+  // auto-create the card on return.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("wiki_pending_animation");
+      if (!raw) return;
+      sessionStorage.removeItem("wiki_pending_animation");
+      const pending = JSON.parse(raw) as { prompt?: unknown; slug?: unknown };
+      if (typeof pending.prompt === "string" && pending.slug === slug) {
+        addCard({
+          id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          prompt: pending.prompt,
+          anchor: null,
+        });
+      }
+    } catch { /* malformed stash — ignore */ }
+  }, [slug, addCard]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -63,6 +91,7 @@ export function WikiBody({ slug, title, bodyMd, isAuthenticated }: WikiBodyProps
     return () => {
       containers.forEach((container) => container.remove());
       containers.clear();
+      activePromptsRef.current.clear();
     };
   }, []);
 
@@ -110,15 +139,21 @@ export function WikiBody({ slug, title, bodyMd, isAuthenticated }: WikiBodyProps
       <TextSelectionTooltip
         containerRef={bodyRef}
         onAnimate={({ text, anchor }) => {
+          const prompt = `为"${title}"中的概念生成 Manim 动画：\n"${text}"`;
           // Generating an animation consumes AI + renderer quota — prompt
-          // unauthenticated users to log in first.
+          // unauthenticated users to log in first, then resume the request.
           if (!isAuthenticated) {
+            try {
+              sessionStorage.setItem(
+                "wiki_pending_animation",
+                JSON.stringify({ prompt, slug }),
+              );
+            } catch {}
             router.push(
               `/auth/login?redirect=${encodeURIComponent(`/wiki/${slug}`)}`,
             );
             return;
           }
-          const prompt = `为"${title}"中的概念生成 Manim 动画：\n"${text}"`;
           addCard({
             id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             prompt,

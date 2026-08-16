@@ -28,11 +28,17 @@ export function SearchContent() {
     queueMicrotask(() => {
       if (!cancelled) setLoading(true);
     });
-    searchContent(supabase, query).then((r) => {
-      if (cancelled) return;
-      setResults(r);
-      setLoading(false);
-    });
+    searchContent(supabase, query)
+      .then((r) => {
+        if (cancelled) return;
+        setResults(r);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setResults([]);
+        setLoading(false);
+      });
     return () => {
       cancelled = true;
     };

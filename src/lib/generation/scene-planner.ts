@@ -1,5 +1,5 @@
 import type { ScenePlan } from "./types";
-import { chatCompletion, type AIMessage } from "@/lib/ai/client";
+import { chatCompletion, MODELS, type AIMessage } from "@/lib/ai/client";
 
 const PLANNER_PROMPT = `你是一个 Manim 动画场景规划器。根据用户的数学可视化需求，输出一个 JSON 格式的场景计划。
 
@@ -82,7 +82,7 @@ export async function planScene(
   try {
     const content = await chatCompletion({
       messages,
-      model: "deepseek-v4-flash",
+      model: MODELS.metadata,
       max_tokens: 900,
       temperature: 0.3,
       thinking: { type: "disabled" },

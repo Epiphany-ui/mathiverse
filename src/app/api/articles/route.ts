@@ -17,20 +17,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
 
-  let body: Record<string, unknown>;
+  let body: unknown;
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "无效的 JSON" }, { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "无效的请求体" }, { status: 400 });
+  }
+  const parsed = body as Record<string, unknown>;
 
-  const title = typeof body.title === "string" ? body.title.trim() : "";
-  const bodyMd = typeof body.bodyMd === "string" ? body.bodyMd : "";
-  const tags = Array.isArray(body.tags) ? body.tags.filter((t) => typeof t === "string") : [];
+  const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+  const bodyMd = typeof parsed.bodyMd === "string" ? parsed.bodyMd : "";
+  const tags = Array.isArray(parsed.tags)
+    ? parsed.tags.filter((t): t is string => typeof t === "string").slice(0, 20)
+    : [];
 
   if (!title || title.length < 2) {
     return NextResponse.json({ error: "标题至少需要 2 个字符" }, { status: 400 });
   }
+  if (title.length > 200) {
+    return NextResponse.json({ error: "标题不能超过 200 个字符" }, { status: 400 });
+  }
   if (!bodyMd) {
     return NextResponse.json({ error: "正文不能为空" }, { status: 400 });
+  }
+  if (bodyMd.length > 200_000) {
+    return NextResponse.json({ error: "正文过长" }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -46,7 +58,8 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Failed to create article:", error.message);
+    return NextResponse.json({ error: "创建失败，请重试" }, { status: 500 });
   }
 
   return NextResponse.json({ id: data.id }, { status: 201 });

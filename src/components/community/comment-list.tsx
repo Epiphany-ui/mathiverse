@@ -8,6 +8,7 @@ import { CornerDownRight, Loader2 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addComment } from "@/lib/db/interactions";
+import { MathText } from "@/components/content/math-text";
 import type { Comment } from "@/types";
 
 function timeAgo(dateStr: string): string {
@@ -107,7 +108,7 @@ function CommentItem({
             </span>
           </div>
           <p className="text-sm text-foreground/85 leading-relaxed">
-            {comment.body}
+            <MathText text={comment.body} />
           </p>
           <div className="flex items-center gap-1">
             <LikeButton

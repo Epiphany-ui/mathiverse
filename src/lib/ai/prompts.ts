@@ -867,8 +867,18 @@ const FIX_SYSTEM_PROMPT = `你是 Manim 调试专家。用户渲染代码时遇�
 /**
  * Build a prompt for AI error fixing (original full-code mode).
  */
+/** Replace a placeholder literally — a function replacement avoids the
+ *  "$&", "$1", "$'" expansion rules of String.prototype.replace. */
+function injectPromptValue(template: string, placeholder: string, value: string) {
+  return template.replace(placeholder, () => value);
+}
+
 export function buildFixPrompt(code: string, error: string) {
-  return FIX_SYSTEM_PROMPT.replace("{code}", code).replace("{error}", error);
+  return injectPromptValue(
+    injectPromptValue(FIX_SYSTEM_PROMPT, "{code}", code),
+    "{error}",
+    error,
+  );
 }
 
 /* ─── V2: Incremental Fix (diff-based) ─── */
@@ -905,35 +915,53 @@ const FIX_V2_SYSTEM_PROMPT = `你是 Manim 调试专家。分析渲染错误，�
  * Build a prompt for V2 incremental (diff-based) AI error fixing.
  */
 export function buildFixPromptV2(code: string, error: string) {
-  return FIX_V2_SYSTEM_PROMPT
-    .replace("{code}", code)
-    .replace("{error}", error);
+  return injectPromptValue(
+    injectPromptValue(FIX_V2_SYSTEM_PROMPT, "{code}", code),
+    "{error}",
+    error,
+  );
 }
 
 /**
  * Parse the AI response into structured changes.
  * Falls back to null if the response is not valid JSON.
  */
+function isCodeChange(value: unknown): value is CodeChange {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const change = value as Record<string, unknown>;
+  return (
+    typeof change.startLine === "number" &&
+    Number.isInteger(change.startLine) &&
+    change.startLine >= 1 &&
+    typeof change.endLine === "number" &&
+    Number.isInteger(change.endLine) &&
+    change.endLine >= change.startLine &&
+    typeof change.newCode === "string" &&
+    typeof change.reason === "string"
+  );
+}
+
 export function parseFixResponse(response: string): { changes: CodeChange[] } | null {
-  try {
-    // Try exact JSON first
-    const parsed = JSON.parse(response.trim());
-    if (parsed.changes && Array.isArray(parsed.changes)) {
-      return parsed;
+  const parse = (raw: string): { changes: CodeChange[] } | null => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
     }
-  } catch {
-    // Try to extract JSON from within markdown or code fences
-    const jsonMatch = response.match(/\{[\s\S]*"changes"[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.changes && Array.isArray(parsed.changes)) {
-          return parsed;
-        }
-      } catch {
-        // fall through to null
-      }
-    }
-  }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const changes = (parsed as Record<string, unknown>).changes;
+    if (!Array.isArray(changes)) return null;
+    const valid = changes.filter(isCodeChange).slice(0, 32);
+    if (valid.length === 0) return null;
+    return { changes: valid };
+  };
+
+  const exact = parse(response.trim());
+  if (exact) return exact;
+
+  // Try to extract JSON from within markdown or code fences
+  const jsonMatch = response.match(/\{[\s\S]*"changes"[\s\S]*\}/);
+  if (jsonMatch) return parse(jsonMatch[0]);
   return null;
 }
